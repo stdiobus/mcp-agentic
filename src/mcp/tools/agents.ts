@@ -10,11 +10,19 @@ import type { AgentInfo } from '../../executor/types.js';
 import { AgentsDiscoverArgsSchema } from '../../types.js';
 import { mapErrorToMCP } from '../../errors/error-mapper.js';
 
+/** Input shape for the `agents_discover` tool handler. */
 export type AgentsDiscoverInput = {
   capability?: string | undefined;
   refresh?: boolean | undefined;
 };
 
+/**
+ * Handle `agents_discover` for a single executor.
+ *
+ * @param executor - Executor to query.
+ * @param input - Validated tool input with optional `capability` filter and `refresh` flag.
+ * @returns MCP text content with the list of agents or an error payload.
+ */
 export async function handleAgentsDiscover(
   executor: AgentExecutor,
   input: AgentsDiscoverInput
@@ -50,7 +58,12 @@ export async function handleAgentsDiscover(
 /**
  * Combined discover handler that merges agents from multiple executors.
  * Used by McpAgenticServer to merge in-process and worker agents.
- * In-process agents appear first in the result.
+ * In-process agents appear first and take precedence on ID collisions.
+ *
+ * @param inProcessExecutor - In-process executor (always present).
+ * @param workerExecutor - Optional worker executor.
+ * @param input - Validated tool input with optional `capability` filter.
+ * @returns MCP text content with the deduplicated list of agents or an error payload.
  */
 export async function handleCombinedDiscover(
   inProcessExecutor: AgentExecutor,

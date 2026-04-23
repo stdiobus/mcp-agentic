@@ -8,6 +8,12 @@
 import type { AgentExecutor } from '../../executor/AgentExecutor.js';
 import { mapErrorToMCP } from '../../errors/error-mapper.js';
 
+/**
+ * Handle `bridge_health` for a single executor.
+ *
+ * @param executor - Executor to query.
+ * @returns MCP text content with health metrics or an error payload.
+ */
 export async function handleBridgeHealth(
   executor: AgentExecutor
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
@@ -37,6 +43,10 @@ export async function handleBridgeHealth(
 /**
  * Combined health handler that merges health from multiple executors.
  * Used by McpAgenticServer to combine in-process and worker health.
+ *
+ * @param inProcessExecutor - In-process executor (always present).
+ * @param workerExecutor - Optional worker executor.
+ * @returns MCP text content with aggregated health metrics or an error payload.
  */
 export async function handleCombinedHealth(
   inProcessExecutor: AgentExecutor,

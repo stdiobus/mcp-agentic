@@ -4,12 +4,18 @@ import type { AgentInfo, SessionEntry, HealthInfo } from './types.js';
 import type { AgentHandler, AgentResult, AgentEvent, PromptOpts } from '../agent/AgentHandler.js';
 import { BridgeError } from '../errors/BridgeError.js';
 
+/** Configuration for {@link InProcessExecutor}. */
 export interface InProcessExecutorConfig {
-  maxSessions?: number;   // default: 100
-  sessionTtlMs?: number;  // default: 3600000 (1 hour) — maximum session lifetime
-  sessionIdleMs?: number; // default: 600000 (10 minutes) — maximum idle time before expiry
-  reaperIntervalMs?: number; // default: 60000 (1 minute) — how often the reaper runs
-  silent?: boolean; // default: false — when true, suppresses process.stderr.write logging
+  /** Maximum number of concurrent sessions. Default: 100. */
+  maxSessions?: number;
+  /** Maximum session lifetime in milliseconds. Default: 3600000 (1 hour). */
+  sessionTtlMs?: number;
+  /** Maximum idle time before session expiry in milliseconds. Default: 600000 (10 minutes). */
+  sessionIdleMs?: number;
+  /** How often the session reaper runs in milliseconds. Default: 60000 (1 minute). */
+  reaperIntervalMs?: number;
+  /** When true, suppresses process.stderr.write logging. Default: false. */
+  silent?: boolean;
 }
 
 /** Internal session entry with agent reference for direct dispatch. */
@@ -17,6 +23,12 @@ interface SessionEntryInternal extends SessionEntry {
   agent: AgentHandler;
 }
 
+/**
+ * InProcessExecutor — runs agents directly in the server process.
+ *
+ * Manages session lifecycle (create, prompt, close) with TTL/idle expiry
+ * and a periodic reaper. Implements the {@link AgentExecutor} interface.
+ */
 export class InProcessExecutor implements AgentExecutor {
   private agents = new Map<string, AgentHandler>();
   private sessions = new Map<string, SessionEntryInternal>();
@@ -29,6 +41,9 @@ export class InProcessExecutor implements AgentExecutor {
   private startedAt = 0;
   private silent: boolean;
 
+  /**
+   * @param config - Optional executor configuration. Defaults are applied for all omitted fields.
+   */
   constructor(config?: InProcessExecutorConfig) {
     this.maxSessions = config?.maxSessions ?? 100;
     this.sessionTtlMs = config?.sessionTtlMs ?? 3_600_000;     // 1 hour
@@ -37,7 +52,12 @@ export class InProcessExecutor implements AgentExecutor {
     this.silent = config?.silent ?? false;
   }
 
-  /** Register an in-process agent at runtime. */
+  /**
+   * Register an in-process agent at runtime.
+   *
+   * @param agent - Agent implementation. Must have at least one of `prompt()` or `stream()`.
+   * @throws {BridgeError} CONFIG if agent has neither `prompt()` nor `stream()`.
+   */
   register(agent: AgentHandler): void {
     if (!agent.prompt && !agent.stream) {
       throw BridgeError.config(
@@ -49,6 +69,10 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── AgentExecutor lifecycle ───────────────────────────────────
 
+  /**
+   * Start the executor and begin the session reaper.
+   * @returns Promise that resolves immediately after initialization.
+   */
   async start(): Promise<void> {
     this.ready = true;
     this.startedAt = Date.now();
@@ -58,6 +82,10 @@ export class InProcessExecutor implements AgentExecutor {
     }
   }
 
+  /**
+   * Stop the reaper and clear all sessions.
+   * @returns Promise that resolves when shutdown is complete.
+   */
   async close(): Promise<void> {
     this.stopReaper();
     this.ready = false;
@@ -68,12 +96,20 @@ export class InProcessExecutor implements AgentExecutor {
     }
   }
 
+  /** @returns `true` if the executor has been started. */
   isReady(): boolean {
     return this.ready;
   }
 
   // ── Discovery ─────────────────────────────────────────────────
 
+  /**
+   * List registered agents, optionally filtered by capability.
+   *
+   * @param capability - If provided, only return agents advertising this capability.
+   * @returns Promise resolving to matching agent info objects.
+   * @throws {BridgeError} INTERNAL if the executor is not started.
+   */
   async discover(capability?: string): Promise<AgentInfo[]> {
     this.assertReady();
 
@@ -93,6 +129,15 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── Session management ────────────────────────────────────────
 
+  /**
+   * Create a new session bound to the specified agent.
+   *
+   * @param agentId - Target agent. If omitted, uses the first registered agent.
+   * @param metadata - Optional caller-supplied metadata attached to the session.
+   * @returns Promise resolving to the new session entry (without internal agent reference).
+   * @throws {BridgeError} CONFIG if no agents are registered.
+   * @throws {BridgeError} UPSTREAM if the agent is not found, capacity is reached, or `onSessionCreate` fails.
+   */
   async createSession(
     agentId?: string,
     metadata?: Record<string, unknown>,
@@ -141,6 +186,13 @@ export class InProcessExecutor implements AgentExecutor {
     return this.toPublicEntry(entry);
   }
 
+  /**
+   * Retrieve an existing session by ID.
+   *
+   * @param sessionId - Session to look up.
+   * @returns Promise resolving to the public session entry.
+   * @throws {BridgeError} UPSTREAM if the session does not exist.
+   */
   async getSession(sessionId: string): Promise<SessionEntry> {
     this.assertReady();
 
@@ -151,6 +203,14 @@ export class InProcessExecutor implements AgentExecutor {
     return this.toPublicEntry(entry);
   }
 
+  /**
+   * Close a session and invoke the agent's `onSessionClose` hook.
+   * Idempotent — closing an already-closed or nonexistent session is a no-op.
+   *
+   * @param sessionId - Session to close.
+   * @param reason - Optional human-readable close reason.
+   * @returns Promise that resolves when the session is removed.
+   */
   async closeSession(sessionId: string, reason?: string): Promise<void> {
     this.assertReady();
 
@@ -173,6 +233,17 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── Prompting ─────────────────────────────────────────────────
 
+  /**
+   * Send a prompt to a session and return the agent's response.
+   * If the agent only implements `stream()`, the stream is auto-collected into a result.
+   *
+   * @param sessionId - Target session.
+   * @param input - Prompt text.
+   * @param opts - Timeout and cancellation options.
+   * @returns Promise resolving to the agent's result.
+   * @throws {BridgeError} UPSTREAM if the session is not found, is busy, or the agent fails.
+   * @throws {BridgeError} INTERNAL if the agent has neither `prompt()` nor `stream()`.
+   */
   async prompt(
     sessionId: string,
     input: string,
@@ -229,6 +300,14 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── Cancellation ──────────────────────────────────────────────
 
+  /**
+   * Cancel an in-flight request by delegating to the agent's `cancel()` method.
+   *
+   * @param sessionId - Session owning the request.
+   * @param requestId - Specific request to cancel.
+   * @returns Promise that resolves when cancellation is acknowledged.
+   * @throws {BridgeError} UPSTREAM if the session does not exist.
+   */
   async cancel(sessionId: string, requestId?: string): Promise<void> {
     this.assertReady();
 
@@ -244,6 +323,10 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── Health ────────────────────────────────────────────────────
 
+  /**
+   * Return health metrics for this executor.
+   * @returns Promise resolving to health info including agent/session counts and uptime.
+   */
   async health(): Promise<HealthInfo> {
     const uptime = this.ready ? Date.now() - this.startedAt : 0;
     return {
@@ -256,12 +339,14 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── Private helpers ───────────────────────────────────────────
 
+  /** Assert the executor is started; throw INTERNAL if not. */
   private assertReady(): void {
     if (!this.ready) {
       throw BridgeError.internal('Executor not started');
     }
   }
 
+  /** Resolve an agent by ID, or return the first registered agent if omitted. */
   private resolveAgent(agentId?: string): AgentHandler {
     if (agentId !== undefined) {
       const agent = this.agents.get(agentId);
@@ -325,6 +410,7 @@ export class InProcessExecutor implements AgentExecutor {
 
   // ── Session reaper ────────────────────────────────────────────
 
+  /** Start the periodic session reaper. Timer is `unref()`'d to not block process exit. */
   private startReaper(): void {
     this.reaperTimer = setInterval(() => {
       void this.reapExpiredSessions();
@@ -335,6 +421,7 @@ export class InProcessExecutor implements AgentExecutor {
     }
   }
 
+  /** Stop the periodic session reaper. */
   private stopReaper(): void {
     if (this.reaperTimer !== null) {
       clearInterval(this.reaperTimer);

@@ -23,9 +23,13 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────
 
+/** Metadata for a single MCP tool: name, description, and optional JSON Schema for inputs. */
 export interface ToolDefinition {
+  /** MCP tool name as registered on the server. */
   name: string;
+  /** Human-readable description shown to MCP clients. */
   description: string;
+  /** JSON Schema for tool input parameters, generated from Zod. Omitted for tools with no inputs. */
   inputSchema?: JsonSchema7Type;
 }
 

@@ -20,11 +20,20 @@ import type { AgentInfo, SessionEntry, HealthInfo, WorkerConfig } from './types.
 import type { AgentResult, PromptOpts } from '../agent/AgentHandler.js';
 import { BridgeError } from '../errors/BridgeError.js';
 
+/** Configuration for {@link WorkerExecutor}. */
 export interface WorkerExecutorConfig {
-  defaultTimeout?: number; // default: 30000
-  silent?: boolean; // default: false — when true, suppresses process.stderr.write logging
+  /** Default request timeout in milliseconds. Default: 30000. */
+  defaultTimeout?: number;
+  /** When true, suppresses process.stderr.write logging. Default: false. */
+  silent?: boolean;
 }
 
+/**
+ * WorkerExecutor — routes requests to external ACP worker processes via StdioBus.
+ *
+ * Implements the {@link AgentExecutor} interface. Each worker is a separate
+ * child process managed by `@stdiobus/node`.
+ */
 export class WorkerExecutor implements AgentExecutor {
   private workers: WorkerConfig[] = [];
   private bus: StdioBus | null = null;
@@ -34,18 +43,30 @@ export class WorkerExecutor implements AgentExecutor {
   private defaultTimeout: number;
   private silent: boolean;
 
+  /**
+   * @param config - Optional executor configuration.
+   */
   constructor(config?: WorkerExecutorConfig) {
     this.defaultTimeout = config?.defaultTimeout ?? 30_000;
     this.silent = config?.silent ?? false;
   }
 
-  /** Register a worker before start() is called. */
+  /**
+   * Register a worker configuration before `start()` is called.
+   * @param config - Worker process configuration.
+   */
   addWorker(config: WorkerConfig): void {
     this.workers.push(config);
   }
 
   // ── AgentExecutor lifecycle ───────────────────────────────────
 
+  /**
+   * Start StdioBus and spawn all registered worker processes.
+   *
+   * @returns Promise that resolves when all workers are running.
+   * @throws {BridgeError} TRANSPORT if StdioBus fails to start.
+   */
   async start(): Promise<void> {
     if (this.workers.length === 0) {
       this.ready = true;
@@ -85,6 +106,10 @@ export class WorkerExecutor implements AgentExecutor {
     }
   }
 
+  /**
+   * Stop StdioBus and clear all tracked sessions.
+   * @returns Promise that resolves when shutdown is complete.
+   */
   async close(): Promise<void> {
     this.ready = false;
 
@@ -100,12 +125,19 @@ export class WorkerExecutor implements AgentExecutor {
     this.sessions.clear();
   }
 
+  /** @returns `true` if the executor has been started. */
   isReady(): boolean {
     return this.ready;
   }
 
   // ── Discovery ─────────────────────────────────────────────────
 
+  /**
+   * List registered workers as agent info, optionally filtered by capability.
+   *
+   * @param capability - If provided, only return workers advertising this capability.
+   * @returns Promise resolving to matching agent info objects.
+   */
   async discover(capability?: string): Promise<AgentInfo[]> {
     this.assertReady();
 
@@ -122,6 +154,14 @@ export class WorkerExecutor implements AgentExecutor {
 
   // ── Session management ────────────────────────────────────────
 
+  /**
+   * Create a new session on the target worker via StdioBus.
+   *
+   * @param agentId - Target worker ID. If omitted, uses the first registered worker.
+   * @param metadata - Optional caller-supplied metadata attached to the session.
+   * @returns Promise resolving to the new session entry.
+   * @throws {BridgeError} UPSTREAM if the worker is not found or returns an invalid response.
+   */
   async createSession(
     agentId?: string,
     metadata?: Record<string, unknown>,
@@ -164,6 +204,13 @@ export class WorkerExecutor implements AgentExecutor {
     }
   }
 
+  /**
+   * Retrieve a locally tracked session by ID.
+   *
+   * @param sessionId - Session to look up.
+   * @returns Promise resolving to a copy of the session entry.
+   * @throws {BridgeError} UPSTREAM if the session does not exist.
+   */
   async getSession(sessionId: string): Promise<SessionEntry> {
     this.assertReady();
 
@@ -174,6 +221,15 @@ export class WorkerExecutor implements AgentExecutor {
     return { ...entry };
   }
 
+  /**
+   * Close a session on the worker and remove it from local tracking.
+   * Idempotent — closing an already-closed session is a no-op.
+   *
+   * @param sessionId - Session to close.
+   * @param _reason - Unused; kept for interface compatibility.
+   * @returns Promise that resolves when the session is closed.
+   * @throws {BridgeError} UPSTREAM or TRANSPORT if the worker request fails.
+   */
   async closeSession(sessionId: string, _reason?: string): Promise<void> {
     this.assertReady();
 
@@ -198,6 +254,16 @@ export class WorkerExecutor implements AgentExecutor {
 
   // ── Prompting ─────────────────────────────────────────────────
 
+  /**
+   * Send a prompt to a worker session and return the result.
+   *
+   * @param sessionId - Target session.
+   * @param input - Prompt text.
+   * @param opts - Timeout options.
+   * @returns Promise resolving to the agent's result.
+   * @throws {BridgeError} UPSTREAM if the session is not found or the worker returns a malformed response.
+   * @throws {BridgeError} TRANSPORT (retryable) if the worker times out.
+   */
   async prompt(
     sessionId: string,
     input: string,
@@ -249,6 +315,14 @@ export class WorkerExecutor implements AgentExecutor {
 
   // ── Cancellation ──────────────────────────────────────────────
 
+  /**
+   * Cancel an in-flight request on the worker. Best-effort — errors are swallowed.
+   *
+   * @param sessionId - Session owning the request.
+   * @param _requestId - Unused; kept for interface compatibility.
+   * @returns Promise that resolves when cancellation is attempted.
+   * @throws {BridgeError} UPSTREAM if the session does not exist.
+   */
   async cancel(sessionId: string, _requestId?: string): Promise<void> {
     this.assertReady();
 
@@ -270,6 +344,10 @@ export class WorkerExecutor implements AgentExecutor {
 
   // ── Health ────────────────────────────────────────────────────
 
+  /**
+   * Return health metrics for this executor.
+   * @returns Promise resolving to health info including worker/session counts and uptime.
+   */
   async health(): Promise<HealthInfo> {
     const uptime = this.ready ? Date.now() - this.startedAt : 0;
     return {
@@ -288,12 +366,14 @@ export class WorkerExecutor implements AgentExecutor {
 
   // ── Private helpers ───────────────────────────────────────────
 
+  /** Assert the executor is started; throw INTERNAL if not. */
   private assertReady(): void {
     if (!this.ready) {
       throw BridgeError.internal('Executor not started');
     }
   }
 
+  /** Resolve a worker by ID, or return the first registered worker if omitted. */
   private resolveWorker(agentId?: string): WorkerConfig {
     if (agentId !== undefined) {
       const worker = this.workers.find((w) => w.id === agentId);

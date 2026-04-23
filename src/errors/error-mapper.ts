@@ -1,18 +1,23 @@
 /**
- * Map BridgeError to MCP error codes
+ * Map BridgeError to MCP JSON-RPC error codes.
+ *
+ * Translates typed {@link BridgeError} categories into numeric MCP error
+ * codes suitable for JSON-RPC responses.
  */
 
 import { BridgeError } from './BridgeError.js';
 
+/** MCP-compatible error payload for JSON-RPC responses. */
 export interface MCPError {
+  /** Numeric JSON-RPC error code. */
   code: number;
+  /** Human-readable error message. */
   message: string;
+  /** Optional structured error data. */
   data?: Record<string, unknown>;
 }
 
-/**
- * MCP JSON-RPC error codes
- */
+/** Standard and MCP-specific JSON-RPC error codes. */
 export const MCPErrorCode = {
   // Standard JSON-RPC errors
   PARSE_ERROR: -32700,
@@ -30,7 +35,10 @@ export const MCPErrorCode = {
 } as const;
 
 /**
- * Map BridgeError to MCP error
+ * Map a {@link BridgeError} to an {@link MCPError} with the appropriate error code.
+ *
+ * @param error - The BridgeError to convert.
+ * @returns MCP error payload with code, message, and structured data.
  */
 export function mapBridgeErrorToMCP(error: BridgeError): MCPError {
   let code: number;
@@ -76,7 +84,11 @@ export function mapBridgeErrorToMCP(error: BridgeError): MCPError {
 }
 
 /**
- * Map generic Error to MCP error
+ * Map any error to an {@link MCPError}. Delegates to {@link mapBridgeErrorToMCP}
+ * for BridgeError instances; wraps unknown errors as INTERNAL.
+ *
+ * @param error - Any thrown value.
+ * @returns MCP error payload safe for JSON-RPC responses.
  */
 export function mapErrorToMCP(error: unknown): MCPError {
   if (error instanceof BridgeError) {

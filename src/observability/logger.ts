@@ -1,73 +1,101 @@
 /**
- * Structured logging with correlation ID support
+ * Structured logging with correlation ID support.
+ *
+ * All output goes to stderr by default — stdout is reserved for the MCP wire protocol.
  */
 
 import { LoggingConfig } from '../types.js';
 
+/** Supported log severity levels, ordered from most to least severe. */
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace';
 
+/** Contextual metadata attached to log entries. */
 export interface LogContext {
+  /** Request correlation ID for tracing. */
   correlationId?: string;
+  /** Session identifier. */
   sessionId?: string;
+  /** Worker identifier. */
   workerId?: string;
+  /** Agent identifier. */
   agentId?: string;
+  /** Additional arbitrary context fields. */
   [key: string]: unknown;
 }
 
+/**
+ * Structured logger that writes to stderr with optional JSON or pretty formatting.
+ * Supports hierarchical context via {@link Logger.child}.
+ */
 export class Logger {
   private config: LoggingConfig;
   private context: LogContext;
 
+  /**
+   * @param config - Logging configuration (level, format, destination).
+   * @param context - Optional initial context fields.
+   */
   constructor(config: LoggingConfig, context: LogContext = {}) {
     this.config = config;
     this.context = context;
   }
 
   /**
-   * Create a child logger with additional context
+   * Create a child logger with additional context merged into the parent's.
+   *
+   * @param context - Additional context fields for the child logger.
+   * @returns A new Logger instance with merged context.
    */
   child(context: LogContext): Logger {
     return new Logger(this.config, { ...this.context, ...context });
   }
 
   /**
-   * Log an error message
+   * Log an error message.
+   * @param message - Log message.
+   * @param context - Optional additional context for this entry.
    */
   error(message: string, context?: LogContext): void {
     this.log('error', message, context);
   }
 
   /**
-   * Log a warning message
+   * Log a warning message.
+   * @param message - Log message.
+   * @param context - Optional additional context for this entry.
    */
   warn(message: string, context?: LogContext): void {
     this.log('warn', message, context);
   }
 
   /**
-   * Log an info message
+   * Log an info message.
+   * @param message - Log message.
+   * @param context - Optional additional context for this entry.
    */
   info(message: string, context?: LogContext): void {
     this.log('info', message, context);
   }
 
   /**
-   * Log a debug message
+   * Log a debug message.
+   * @param message - Log message.
+   * @param context - Optional additional context for this entry.
    */
   debug(message: string, context?: LogContext): void {
     this.log('debug', message, context);
   }
 
   /**
-   * Log a trace message
+   * Log a trace message.
+   * @param message - Log message.
+   * @param context - Optional additional context for this entry.
    */
   trace(message: string, context?: LogContext): void {
     this.log('trace', message, context);
   }
 
-  /**
-   * Internal log method
-   */
+  /** Dispatch a log entry at the given level. */
   private log(level: LogLevel, message: string, context?: LogContext): void {
     if (!this.shouldLog(level)) {
       return;
@@ -77,9 +105,7 @@ export class Logger {
     this.write(logEntry);
   }
 
-  /**
-   * Check if log level should be logged
-   */
+  /** Check whether the given level meets the configured minimum. */
   private shouldLog(level: LogLevel): boolean {
     const levels: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace'];
     const configLevel = this.config.level;
@@ -88,9 +114,7 @@ export class Logger {
     return levelIndex <= configIndex;
   }
 
-  /**
-   * Format log entry
-   */
+  /** Build a formatted log string from level, message, and merged context. */
   private formatLogEntry(level: LogLevel, message: string, context?: LogContext): string {
     const mergedContext = { ...this.context, ...context };
 
@@ -101,9 +125,7 @@ export class Logger {
     }
   }
 
-  /**
-   * Format as JSON
-   */
+  /** Format a log entry as a single-line JSON string. */
   private formatJSON(level: LogLevel, message: string, context: LogContext): string {
     const entry: Record<string, unknown> = {
       level,
@@ -128,9 +150,7 @@ export class Logger {
     return JSON.stringify(entry);
   }
 
-  /**
-   * Format as pretty text
-   */
+  /** Format a log entry as human-readable text. */
   private formatPretty(level: LogLevel, message: string, context: LogContext): string {
     const parts: string[] = [];
 
@@ -159,9 +179,7 @@ export class Logger {
     return parts.join(' ');
   }
 
-  /**
-   * Write log entry to destination
-   */
+  /** Write a formatted log entry to the configured destination. */
   private write(entry: string): void {
     const destination = this.config.destination;
 
@@ -179,7 +197,11 @@ export class Logger {
 }
 
 /**
- * Create a logger instance
+ * Create a new {@link Logger} instance.
+ *
+ * @param config - Logging configuration.
+ * @param context - Optional initial context fields.
+ * @returns A configured Logger.
  */
 export function createLogger(config: LoggingConfig, context?: LogContext): Logger {
   return new Logger(config, context);

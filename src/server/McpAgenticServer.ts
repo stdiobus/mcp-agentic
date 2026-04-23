@@ -65,6 +65,7 @@ import type { TasksDelegateInput } from '../mcp/tools/tasks.js';
 
 // ─── Config ──────────────────────────────────────────────────────
 
+/** Configuration options for {@link McpAgenticServer}. */
 export interface McpAgenticServerConfig {
   /** Pre-register in-process agents at construction time. */
   agents?: AgentHandler[];
@@ -103,6 +104,11 @@ export class McpAgenticServer {
   /** Maximum metadata size in bytes (JSON-serialized). */
   private readonly maxMetadataBytes: number;
 
+  /**
+   * Create a new MCP Agentic server.
+   *
+   * @param config - Optional server configuration. Defaults are applied for all omitted fields.
+   */
   constructor(config?: McpAgenticServerConfig) {
     this._config = config ?? {};
     this.maxConcurrentRequests = this._config.maxConcurrentRequests ?? 50;
@@ -130,7 +136,10 @@ export class McpAgenticServer {
 
   /**
    * Register an in-process agent.
-   * @returns `this` for chaining.
+   *
+   * @param agent - Agent implementation. Must have `id` and at least one of `prompt()` or `stream()`.
+   * @returns `this` for method chaining.
+   * @throws {BridgeError} CONFIG if agent has neither `prompt()` nor `stream()`.
    */
   register(agent: Agent): McpAgenticServer {
     this.inProcess.register(agent);
@@ -141,7 +150,9 @@ export class McpAgenticServer {
   /**
    * Register an external worker process.
    * Lazily creates the WorkerExecutor on first call.
-   * @returns `this` for chaining.
+   *
+   * @param config - Worker process configuration (command, args, env).
+   * @returns `this` for method chaining.
    */
   registerWorker(config: WorkerConfig): McpAgenticServer {
     if (!this.worker) {
@@ -156,6 +167,9 @@ export class McpAgenticServer {
 
   /**
    * Start executors and connect the MCP server via stdio transport.
+   *
+   * @returns Promise that resolves when the server is ready to accept tool calls.
+   * @throws {BridgeError} TRANSPORT if StdioBus fails to start.
    */
   async startStdio(): Promise<void> {
     await this.inProcess.start();
@@ -174,6 +188,8 @@ export class McpAgenticServer {
 
   /**
    * Gracefully shut down executors and the MCP server.
+   *
+   * @returns Promise that resolves when all resources are released.
    */
   async close(): Promise<void> {
     await this.mcpServer.close();
@@ -196,6 +212,9 @@ export class McpAgenticServer {
    *
    * When no agentId is provided, returns the in-process executor
    * if it has agents, otherwise the worker executor.
+   *
+   * @param agentId - Agent to look up. Falls back to `defaultAgentId` if omitted.
+   * @returns Promise resolving to the executor that owns the agent.
    */
   private async resolveExecutor(agentId?: string): Promise<AgentExecutor> {
     // Apply defaultAgentId when no explicit agentId is provided
@@ -268,6 +287,9 @@ export class McpAgenticServer {
   /**
    * Find which executor owns a given session ID.
    * Checks in-process first, then workers.
+   *
+   * @param sessionId - Session to look up.
+   * @returns Promise resolving to the executor that owns the session.
    */
   private async resolveExecutorForSession(sessionId: string): Promise<AgentExecutor> {
     // Try in-process first
@@ -296,6 +318,10 @@ export class McpAgenticServer {
   /**
    * Wrap a handler call with backpressure limiting.
    * Rejects with a retryable transport error when the server is overloaded.
+   *
+   * @param fn - Async handler to execute under backpressure control.
+   * @returns Promise resolving to the handler's result.
+   * @throws {BridgeError} TRANSPORT (retryable) when `maxConcurrentRequests` is exceeded.
    */
   private async withBackpressure<T>(fn: () => Promise<T>): Promise<T> {
     if (this.activeRequests >= this.maxConcurrentRequests) {
@@ -313,7 +339,9 @@ export class McpAgenticServer {
 
   /**
    * Validate that a prompt does not exceed the configured maximum size.
-   * @throws BridgeError.upstream when the prompt is too large.
+   *
+   * @param prompt - Prompt text to validate.
+   * @throws {BridgeError} UPSTREAM when the prompt exceeds `maxPromptBytes`.
    */
   private validatePromptSize(prompt: string): void {
     if (Buffer.byteLength(prompt) > this.maxPromptBytes) {
@@ -323,7 +351,9 @@ export class McpAgenticServer {
 
   /**
    * Validate that metadata (JSON-serialized) does not exceed the configured maximum size.
-   * @throws BridgeError.upstream when the metadata is too large.
+   *
+   * @param metadata - Optional metadata object to validate.
+   * @throws {BridgeError} UPSTREAM when the serialized metadata exceeds `maxMetadataBytes`.
    */
   private validateMetadataSize(metadata?: Record<string, unknown>): void {
     if (metadata !== undefined && Buffer.byteLength(JSON.stringify(metadata)) > this.maxMetadataBytes) {
@@ -336,6 +366,7 @@ export class McpAgenticServer {
   // Each tool: resolve executor → call handler → return result.
   // All tool logic lives in src/mcp/tools/*.ts.
 
+  /** Register all 8 MCP tool handlers on the McpServer instance. */
   private registerToolHandlers(): void {
     // Tool descriptions sourced from centralized tool-definitions.ts
     this.mcpServer.registerTool(bridgeHealthDef.name, {

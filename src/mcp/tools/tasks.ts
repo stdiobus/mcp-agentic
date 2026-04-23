@@ -12,6 +12,7 @@ import type { AgentExecutor } from '../../executor/AgentExecutor.js';
 import { TasksDelegateArgsSchema } from '../../types.js';
 import { mapErrorToMCP } from '../../errors/error-mapper.js';
 
+/** Input shape for the `tasks_delegate` tool handler. */
 export type TasksDelegateInput = {
   prompt: string;
   agentId?: string | undefined;
@@ -19,6 +20,16 @@ export type TasksDelegateInput = {
   metadata?: Record<string, unknown> | undefined;
 };
 
+/**
+ * Handle `tasks_delegate` — one-shot delegation (create + prompt + close).
+ *
+ * Creates a session, sends the prompt, closes the session, and returns the result.
+ * On failure, performs best-effort session cleanup.
+ *
+ * @param executor - Executor to delegate to.
+ * @param input - Validated tool input with `prompt`, optional `agentId`, `timeout`, and `metadata`.
+ * @returns MCP text content with the delegation result or an error payload.
+ */
 export async function handleTasksDelegate(
   executor: AgentExecutor,
   input: TasksDelegateInput
