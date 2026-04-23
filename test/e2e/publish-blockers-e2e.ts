@@ -404,7 +404,7 @@ async function testBug6_CleanShutdownWithActiveSessions(): Promise<void> {
   console.log('\n  [Bug 6] Clean shutdown with active sessions');
 
   // Setup: real InProcessExecutor with agents and active sessions
-  const executor = new InProcessExecutor({ silent: true });
+  const executor = new InProcessExecutor({ silent: false });
   executor.register(new EchoAgent());
   await executor.start();
 
