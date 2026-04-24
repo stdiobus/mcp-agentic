@@ -17,6 +17,8 @@ keywords:
   - route task to agent
   - embedded runtime
   - worker orchestration
+author: "stdio Bus"
+license: "Apache-2.0"
 ---
 
 # MCP Agentic
