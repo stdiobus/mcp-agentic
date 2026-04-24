@@ -11,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
 [![Tests](https://img.shields.io/badge/tests-158%20passing-brightgreen?style=for-the-badge&logo=jest)](https://github.com/stdiobus/mcp-agentic)
 
-Agent orchestration server that connects MCP clients to ACP-compatible agents through [stdio Bus](https://github.com/stdiobus/stdiobus).
+Agent orchestration server that connects MCP clients to ACP-compatible agents through [stdio Bus](https://stdiobus.com).
 
 Agents run in-process (via `AgentHandler`) or as external worker processes (via `@stdiobus/node` StdioBus). The single entry point is `McpAgenticServer`, which owns the MCP server, tool registration, and executor lifecycle.
 
