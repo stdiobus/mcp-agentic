@@ -15,6 +15,11 @@ Agent orchestration server that connects MCP clients to ACP-compatible agents th
 
 Agents run in-process (via `AgentHandler`) or as external worker processes (via `@stdiobus/node` StdioBus). The single entry point is `McpAgenticServer`, which owns the MCP server, tool registration, and executor lifecycle.
 
+> **This is a public sandbox for a broader agent infrastructure platform.**
+> The repository serves as an open proving ground for experimenting with MCP-accessible ACP agent orchestration, validating protocol integrations, and stress-testing runtime boundaries before selected capabilities are considered for the broader stdio Bus ecosystem.
+>
+> Contributions, forks, and production experiments are welcome.
+
 ## Features
 
 - **In-process agents** — implement `AgentHandler` and register directly
