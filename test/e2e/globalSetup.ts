@@ -1,3 +1,9 @@
+/*
+ * @license
+ * Copyright 2026-present Raman Marozau, raman@stdiobus.com
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * E2E global setup: build the project before running e2e tests.
  */

@@ -1,0 +1,13 @@
+{
+  "name": "companion",
+  "role": "Lead Solution Architect and Principal Software Engineer",
+  "model": "gpt-4o-mini",
+  "capabilities": [
+    "architecture",
+    "code-review",
+    "debugging",
+    "analysis",
+    "conversation"
+  ],
+  "systemPrompt": null
+}

@@ -1,5 +1,11 @@
 #!/bin/bash
 #
+# @license
+# Copyright 2026-present Raman Marozau, raman@stdiobus.com
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
 # Run all MCP Agentic E2E tests sequentially.
 # Each test is a self-contained TypeScript script that exercises the full pipeline:
 #   MCP Client → InMemoryTransport → McpAgenticServer → InProcessExecutor → AgentHandler

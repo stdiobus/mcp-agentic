@@ -1,3 +1,9 @@
+/*
+ * @license
+ * Copyright 2026-present Raman Marozau, raman@stdiobus.com
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * Developer Sandbox: Multi-Agent MCP Power Setup
  *

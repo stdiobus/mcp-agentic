@@ -1,3 +1,9 @@
+/*
+ * @license
+ * Copyright 2026-present Raman Marozau, raman@stdiobus.com
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 /**
  * Quick test client for codex-acp MCP server.
  * Connects via real stdio, runs a few tool calls, exits.

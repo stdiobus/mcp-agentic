@@ -1,3 +1,9 @@
+/*
+ * @license
+ * Copyright 2026-present Raman Marozau, raman@stdiobus.com
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { jest, describe, it, expect, beforeAll, beforeEach } from '@jest/globals';
 import * as fc from 'fast-check';
 import type { AgentHandler } from '../../../src/agent/AgentHandler.js';

@@ -1,3 +1,9 @@
+/*
+ * @license
+ * Copyright 2026-present Raman Marozau, raman@stdiobus.com
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { randomBytes } from 'node:crypto';
 import type { AgentExecutor } from './AgentExecutor.js';
 import type { AgentInfo, SessionEntry, HealthInfo } from './types.js';
