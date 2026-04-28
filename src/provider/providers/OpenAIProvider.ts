@@ -31,6 +31,59 @@ const STOP_REASON_MAP: Record<string, string> = {
   content_filter: 'content_filter',
 };
 
+// ── Model-aware parameter mapping ───────────────────────────────
+
+/**
+ * Models that still use the legacy `max_tokens` parameter.
+ *
+ * All other models (o-series reasoning models, GPT-5+, and any future models)
+ * use `max_completion_tokens`. The OpenAI API has deprecated `max_tokens` in
+ * favor of `max_completion_tokens`, and o-series models reject `max_tokens`
+ * entirely.
+ *
+ * Strategy: static allowlist of legacy model prefixes. New/unknown models
+ * default to the modern `max_completion_tokens` parameter. This is safe
+ * because OpenAI only adds new models that use the modern parameter.
+ */
+const LEGACY_MAX_TOKENS_PREFIXES: readonly string[] = [
+  'gpt-4o',       // gpt-4o, gpt-4o-mini, gpt-4o-2024-*, gpt-4o-audio-*, etc.
+  'gpt-4',        // gpt-4, gpt-4-turbo, gpt-4-turbo-preview, gpt-4-0613, etc.
+  'gpt-3.5',      // gpt-3.5-turbo, gpt-3.5-turbo-16k, etc.
+];
+
+/**
+ * Determine the correct SDK parameter name for maxTokens based on the model.
+ *
+ * Legacy models (GPT-4o, GPT-4, GPT-3.5) use `max_tokens`.
+ * Modern models (o-series, GPT-5+, and any unknown/new models) use
+ * `max_completion_tokens`.
+ *
+ * Matching uses prefix comparison: a model matches a legacy prefix if the
+ * model name equals the prefix exactly, or starts with the prefix followed
+ * by a non-alphanumeric character (dash, colon, dot, etc.). This ensures
+ * "gpt-4" matches "gpt-4" and "gpt-4-turbo" but not "gpt-4o".
+ *
+ * @param model - The model identifier string.
+ * @returns The SDK parameter name to use: `'max_tokens'` or `'max_completion_tokens'`.
+ */
+export function getMaxTokensParamName(model: string): 'max_tokens' | 'max_completion_tokens' {
+  const lower = model.toLowerCase();
+  for (const prefix of LEGACY_MAX_TOKENS_PREFIXES) {
+    if (lower === prefix) {
+      return 'max_tokens';
+    }
+    if (lower.startsWith(prefix) && lower.length > prefix.length) {
+      // The character immediately after the prefix must be non-alphanumeric
+      // to avoid "gpt-4" matching "gpt-4o" (where 'o' is alphanumeric).
+      const nextChar = lower[prefix.length]!;
+      if (!/[a-z0-9]/i.test(nextChar)) {
+        return 'max_tokens';
+      }
+    }
+  }
+  return 'max_completion_tokens';
+}
+
 // ── Types for the OpenAI SDK (minimal surface used) ─────────────
 
 interface OpenAIClient {
@@ -172,7 +225,8 @@ export class OpenAIProvider implements AIProvider {
       body['temperature'] = params.temperature;
     }
     if (params.maxTokens !== undefined) {
-      body['max_tokens'] = params.maxTokens;
+      const maxTokensParam = getMaxTokensParamName(model);
+      body[maxTokensParam] = params.maxTokens;
     }
     if (params.topP !== undefined) {
       body['top_p'] = params.topP;

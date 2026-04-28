@@ -1,7 +1,7 @@
 {
   "name": "companion",
   "role": "Lead Solution Architect and Principal Software Engineer",
-  "model": "gpt-4o-mini",
+  "model": "gpt-5.1",
   "capabilities": [
     "architecture",
     "code-review",
@@ -12,6 +12,6 @@
   "systemPrompt": null,
   "defaults": {
     "temperature": 0.7,
-    "maxTokens": 4096
+    "maxTokens": 16384
   }
 }

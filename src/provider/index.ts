@@ -32,6 +32,6 @@ export type { ProviderInfo } from './ProviderRegistry.js';
 
 // ── Concrete provider implementations ───────────────────────────
 
-export { OpenAIProvider } from './providers/OpenAIProvider.js';
+export { OpenAIProvider, getMaxTokensParamName } from './providers/OpenAIProvider.js';
 export { AnthropicProvider } from './providers/AnthropicProvider.js';
 export { GoogleGeminiProvider } from './providers/GoogleGeminiProvider.js';

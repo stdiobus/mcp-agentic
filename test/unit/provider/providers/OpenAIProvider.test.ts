@@ -15,11 +15,12 @@
  * - Provider id in error details (Property 9)
  * - Unsupported providerSpecific ignored (Property 11)
  * - AbortSignal passthrough
+ * - Model-aware max_tokens vs max_completion_tokens mapping
  */
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import * as fc from 'fast-check';
-import { OpenAIProvider } from '../../../../src/provider/providers/OpenAIProvider.js';
+import { OpenAIProvider, getMaxTokensParamName } from '../../../../src/provider/providers/OpenAIProvider.js';
 import { BridgeError } from '../../../../src/errors/BridgeError.js';
 import type { ChatMessage, ProviderConfig, RuntimeParams } from '../../../../src/provider/AIProvider.js';
 
@@ -411,10 +412,18 @@ describe('OpenAIProvider', () => {
       );
     });
 
-    it('should pass maxTokens as max_tokens', async () => {
+    it('should pass maxTokens as max_tokens for legacy models', async () => {
       await provider.complete([{ role: 'user', content: 'hi' }], { model: 'gpt-4', maxTokens: 100 });
       expect(createFn).toHaveBeenCalledWith(
         expect.objectContaining({ max_tokens: 100 }),
+        expect.anything(),
+      );
+    });
+
+    it('should pass maxTokens as max_completion_tokens for modern models', async () => {
+      await provider.complete([{ role: 'user', content: 'hi' }], { model: 'gpt-5', maxTokens: 100 });
+      expect(createFn).toHaveBeenCalledWith(
+        expect.objectContaining({ max_completion_tokens: 100 }),
         expect.anything(),
       );
     });
@@ -737,6 +746,229 @@ describe('OpenAIProvider', () => {
             for (let i = 0; i < messages.length; i++) {
               expect(sentMessages[i]!.role).toBe(messages[i]!.role);
               expect(sentMessages[i]!.content).toBe(messages[i]!.content);
+            }
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+  });
+
+  // ── getMaxTokensParamName — model-aware parameter mapping ─────
+
+  describe('getMaxTokensParamName', () => {
+    // ── Legacy models → max_tokens ──────────────────────────────
+
+    it('should return max_tokens for gpt-4o', () => {
+      expect(getMaxTokensParamName('gpt-4o')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4o-mini', () => {
+      expect(getMaxTokensParamName('gpt-4o-mini')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4o-2024-08-06', () => {
+      expect(getMaxTokensParamName('gpt-4o-2024-08-06')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4o-audio-preview', () => {
+      expect(getMaxTokensParamName('gpt-4o-audio-preview')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4', () => {
+      expect(getMaxTokensParamName('gpt-4')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4-turbo', () => {
+      expect(getMaxTokensParamName('gpt-4-turbo')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4-turbo-preview', () => {
+      expect(getMaxTokensParamName('gpt-4-turbo-preview')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-4-0613', () => {
+      expect(getMaxTokensParamName('gpt-4-0613')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-3.5-turbo', () => {
+      expect(getMaxTokensParamName('gpt-3.5-turbo')).toBe('max_tokens');
+    });
+
+    it('should return max_tokens for gpt-3.5-turbo-16k', () => {
+      expect(getMaxTokensParamName('gpt-3.5-turbo-16k')).toBe('max_tokens');
+    });
+
+    // ── Modern models → max_completion_tokens ───────────────────
+
+    it('should return max_completion_tokens for gpt-5', () => {
+      expect(getMaxTokensParamName('gpt-5')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for gpt-5.1', () => {
+      expect(getMaxTokensParamName('gpt-5.1')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for gpt-5.4', () => {
+      expect(getMaxTokensParamName('gpt-5.4')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for gpt-5.4-mini', () => {
+      expect(getMaxTokensParamName('gpt-5.4-mini')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for o1', () => {
+      expect(getMaxTokensParamName('o1')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for o1-mini', () => {
+      expect(getMaxTokensParamName('o1-mini')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for o3', () => {
+      expect(getMaxTokensParamName('o3')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for o3-mini', () => {
+      expect(getMaxTokensParamName('o3-mini')).toBe('max_completion_tokens');
+    });
+
+    it('should return max_completion_tokens for o4-mini', () => {
+      expect(getMaxTokensParamName('o4-mini')).toBe('max_completion_tokens');
+    });
+
+    // ── Case insensitivity ──────────────────────────────────────
+
+    it('should be case-insensitive', () => {
+      expect(getMaxTokensParamName('GPT-4O')).toBe('max_tokens');
+      expect(getMaxTokensParamName('GPT-5')).toBe('max_completion_tokens');
+      expect(getMaxTokensParamName('GPT-4-Turbo')).toBe('max_tokens');
+    });
+
+    // ── Unknown models default to modern ────────────────────────
+
+    it('should return max_completion_tokens for unknown models', () => {
+      expect(getMaxTokensParamName('some-custom-model')).toBe('max_completion_tokens');
+      expect(getMaxTokensParamName('claude-3')).toBe('max_completion_tokens');
+    });
+
+    // ── Property: legacy models always get max_tokens ───────────
+
+    // Feature: multi-provider-agents, Property 19: Model-aware maxTokens parameter mapping
+    it('property: all legacy model variants use max_tokens', () => {
+      const legacyPrefixes = ['gpt-4o', 'gpt-4', 'gpt-3.5'];
+      const suffixes = ['', '-mini', '-turbo', '-turbo-preview', '-0613', '-2024-08-06', '-16k'];
+
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...legacyPrefixes),
+          fc.constantFrom(...suffixes),
+          (prefix, suffix) => {
+            const model = prefix + suffix;
+            // Only valid if the suffix doesn't create a model that starts with
+            // a different prefix (e.g., gpt-4 + '' = gpt-4, not gpt-4o)
+            return getMaxTokensParamName(model) === 'max_tokens';
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+
+    // Feature: multi-provider-agents, Property 19: Model-aware maxTokens parameter mapping
+    it('property: all modern model variants use max_completion_tokens', () => {
+      const modernPrefixes = ['gpt-5', 'gpt-5.1', 'gpt-5.4', 'o1', 'o3', 'o4'];
+      const suffixes = ['', '-mini', '-pro', '-2025-01-01'];
+
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...modernPrefixes),
+          fc.constantFrom(...suffixes),
+          (prefix, suffix) => {
+            const model = prefix + suffix;
+            return getMaxTokensParamName(model) === 'max_completion_tokens';
+          },
+        ),
+        { numRuns: 100 },
+      );
+    });
+  });
+
+  // ── complete() — model-aware maxTokens in SDK calls ───────────
+
+  describe('complete() — model-aware maxTokens mapping', () => {
+    let provider: OpenAIProvider;
+
+    beforeEach(() => {
+      provider = createProvider();
+      createFn.mockResolvedValue(mockSuccessResponse());
+    });
+
+    it('should send max_tokens for gpt-4o-mini', async () => {
+      await provider.complete([{ role: 'user', content: 'hi' }], { model: 'gpt-4o-mini', maxTokens: 200 });
+      const callArgs = createFn.mock.calls[0]![0] as Record<string, any>;
+      expect(callArgs['max_tokens']).toBe(200);
+      expect(callArgs['max_completion_tokens']).toBeUndefined();
+    });
+
+    it('should send max_completion_tokens for gpt-5.1', async () => {
+      await provider.complete([{ role: 'user', content: 'hi' }], { model: 'gpt-5.1', maxTokens: 200 });
+      const callArgs = createFn.mock.calls[0]![0] as Record<string, any>;
+      expect(callArgs['max_completion_tokens']).toBe(200);
+      expect(callArgs['max_tokens']).toBeUndefined();
+    });
+
+    it('should send max_completion_tokens for o3-mini', async () => {
+      await provider.complete([{ role: 'user', content: 'hi' }], { model: 'o3-mini', maxTokens: 500 });
+      const callArgs = createFn.mock.calls[0]![0] as Record<string, any>;
+      expect(callArgs['max_completion_tokens']).toBe(500);
+      expect(callArgs['max_tokens']).toBeUndefined();
+    });
+
+    it('should not include either param when maxTokens is not specified', async () => {
+      await provider.complete([{ role: 'user', content: 'hi' }], { model: 'gpt-5' });
+      const callArgs = createFn.mock.calls[0]![0] as Record<string, any>;
+      expect(callArgs['max_tokens']).toBeUndefined();
+      expect(callArgs['max_completion_tokens']).toBeUndefined();
+    });
+
+    // Feature: multi-provider-agents, Property 19: Model-aware maxTokens parameter mapping
+    it('property: for any model and maxTokens, exactly one of max_tokens or max_completion_tokens is set', async () => {
+      const legacyModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'];
+      const modernModels = ['gpt-5', 'gpt-5.1', 'gpt-5.4', 'o1', 'o3', 'o3-mini', 'o4-mini'];
+
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...legacyModels, ...modernModels),
+          fc.integer({ min: 1, max: 100000 }),
+          async (model, maxTokens) => {
+            const localCreateFn = jest.fn<any>().mockResolvedValue(mockSuccessResponse());
+            const localMockOpenAI = class {
+              readonly chat = { completions: { create: localCreateFn } };
+              constructor(_opts: { apiKey: string }) { }
+            };
+            const localProvider = new OpenAIProvider(createConfig(), localMockOpenAI as any);
+
+            await localProvider.complete(
+              [{ role: 'user', content: 'test' }],
+              { model, maxTokens },
+            );
+
+            const callArgs = localCreateFn.mock.calls[0]![0] as Record<string, any>;
+            const hasMaxTokens = callArgs['max_tokens'] !== undefined;
+            const hasMaxCompletionTokens = callArgs['max_completion_tokens'] !== undefined;
+
+            // Exactly one must be set
+            expect(hasMaxTokens !== hasMaxCompletionTokens).toBe(true);
+
+            // The value must equal the input maxTokens
+            const actualValue = hasMaxTokens ? callArgs['max_tokens'] : callArgs['max_completion_tokens'];
+            expect(actualValue).toBe(maxTokens);
+
+            // Legacy models → max_tokens, modern → max_completion_tokens
+            if (legacyModels.includes(model)) {
+              expect(hasMaxTokens).toBe(true);
+            } else {
+              expect(hasMaxCompletionTokens).toBe(true);
             }
           },
         ),
