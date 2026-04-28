@@ -1,7 +1,12 @@
 /**
  * Structured logging with correlation ID support.
  *
- * All output goes to stderr by default — stdout is reserved for the MCP wire protocol.
+ * All output goes to stderr by default — stdout is reserved for the MCP wire
+ * protocol. Writing diagnostic data to stdout corrupts the JSON-RPC stream and
+ * causes opaque "Connection closed" errors on the MCP client side.
+ *
+ * The `'stdout'` destination is intentionally excluded from the configuration
+ * schema to prevent accidental protocol corruption.
  */
 
 import { LoggingConfig } from '../types.js';
@@ -179,18 +184,21 @@ export class Logger {
     return parts.join(' ');
   }
 
-  /** Write a formatted log entry to the configured destination. */
+  /**
+   * Write a formatted log entry to the configured destination.
+   *
+   * All paths ultimately write to stderr (or a file in the future).
+   * stdout is never used — it is reserved for the MCP JSON-RPC wire protocol.
+   */
   private write(entry: string): void {
     const destination = this.config.destination;
 
-    if (destination === 'stderr') {
-      console.error(entry);
-    } else if (destination === 'stdout') {
-      console.log(entry);
-    } else if (destination === 'file' && this.config.filePath) {
+    if (destination === 'file' && this.config.filePath) {
       // TODO: Implement file logging
       console.error(entry);
     } else {
+      // Default: stderr. This is the only safe destination when running as
+      // an MCP server because stdout carries the JSON-RPC wire protocol.
       console.error(entry);
     }
   }

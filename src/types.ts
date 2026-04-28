@@ -22,8 +22,14 @@ export const LoggingConfigSchema = z.object({
   includeTimestamp: z.boolean().default(true),
   /** Include correlation ID in log entries. Default: `true`. */
   includeCorrelationId: z.boolean().default(true),
-  /** Log output destination. Default: `'stderr'`. */
-  destination: z.enum(['stderr', 'stdout', 'file']).default('stderr'),
+  /**
+   * Log output destination. Default: `'stderr'`.
+   *
+   * **Important:** `'stdout'` is intentionally excluded because stdout is
+   * reserved for the MCP JSON-RPC wire protocol. Writing log data to stdout
+   * corrupts the protocol stream and causes opaque "Connection closed" errors.
+   */
+  destination: z.enum(['stderr', 'file']).default('stderr'),
   /** File path when `destination` is `'file'`. */
   filePath: z.string().optional(),
 });
