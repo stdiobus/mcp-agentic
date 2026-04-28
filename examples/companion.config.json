@@ -9,5 +9,9 @@
     "analysis",
     "conversation"
   ],
-  "systemPrompt": null
+  "systemPrompt": null,
+  "defaults": {
+    "temperature": 0.7,
+    "maxTokens": 4096
+  }
 }

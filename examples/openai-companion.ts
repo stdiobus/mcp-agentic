@@ -7,10 +7,15 @@
 /**
  * OpenAI Companion Agent — Real MCP Server Example
  *
- * A fully configurable AI companion powered by OpenAI, exposed as an
- * MCP Agentic server over stdio. Configuration is split by concern:
+ * A fully configurable AI companion powered by OpenAI via the official
+ * `openai` SDK, exposed as an MCP Agentic server over stdio. Uses the
+ * {@link MultiProviderCompanionAgent} with a single OpenAI provider for
+ * full runtime parameter control through MCP tools.
  *
- * - **JSON file** — behavior: role, name, system prompt, capabilities, model
+ * Configuration is split by concern:
+ *
+ * - **JSON file** — behavior: role, name, system prompt, capabilities, model,
+ *   default RuntimeParams
  * - **Environment** — secrets: API key only
  *
  * The JSON config can be committed to a repo and shared across a team.
@@ -22,21 +27,23 @@
  *
  * ```json
  * {
- *   "name": "architect",
+ *   "name": "companion",
  *   "role": "Lead Solution Architect",
  *   "model": "gpt-4o-mini",
  *   "capabilities": ["architecture", "code-review", "design"],
- *   "systemPrompt": null
+ *   "systemPrompt": null,
+ *   "defaults": { "temperature": 0.7 }
  * }
  * ```
  *
- * | Field          | Required | Default                | Description                                      |
- * |----------------|----------|------------------------|--------------------------------------------------|
- * | `name`         | no       | `"companion"`          | Agent ID for MCP routing                         |
- * | `role`         | no       | `"AI Companion"`       | Who the companion is — drives default system prompt |
- * | `model`        | no       | `"gpt-4o-mini"`        | OpenAI model identifier                          |
- * | `capabilities` | no       | `["analysis","conversation"]` | Capabilities for agents_discover            |
- * | `systemPrompt` | no       | `null` (built from role) | Full system prompt override; `null` = auto-build |
+ * | Field          | Required | Default                       | Description                                          |
+ * |----------------|----------|-------------------------------|------------------------------------------------------|
+ * | `name`         | no       | `"companion"`                 | Agent ID for MCP routing                             |
+ * | `role`         | no       | `"AI Companion"`              | Who the companion is — drives default system prompt   |
+ * | `model`        | no       | `"gpt-4o-mini"`               | OpenAI model identifier                              |
+ * | `capabilities` | no       | `["analysis","conversation"]` | Capabilities for agents_discover                     |
+ * | `systemPrompt` | no       | `null` (built from role)      | Full system prompt override; `null` = auto-build     |
+ * | `defaults`     | no       | `{}`                          | Default RuntimeParams (temperature, maxTokens, etc.) |
  *
  * When `systemPrompt` is `null`, a default prompt is built from `role`.
  * Set it to a string to take full control over the companion's instructions.
@@ -81,58 +88,33 @@
  *   }
  * }
  * ```
+ *
+ * ## MCP tool usage examples
+ *
+ * ### Prompt with runtime parameter overrides
+ * ```
+ * sessions_prompt({ sessionId: "...", prompt: "Hello", runtimeParams: { temperature: 0, model: "gpt-4o" } })
+ * ```
+ *
+ * ### One-shot delegation with runtimeParams
+ * ```
+ * tasks_delegate({ prompt: "Explain MCP", runtimeParams: { maxTokens: 100 } })
+ * ```
  */
 
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { McpAgenticServer } from '../src/index.js';
-import type { AgentHandler, AgentResult, PromptOpts } from '../src/index.js';
+import {
+  McpAgenticServer,
+  MultiProviderCompanionAgent,
+  ProviderRegistry,
+  OpenAIProvider,
+} from '../src/index.js';
+import type { RuntimeParams } from '../src/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// ── OpenAI HTTP Client (zero dependencies) ──────────────────────
-
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-interface OpenAIResponse {
-  choices: Array<{
-    message: { content: string };
-    finish_reason: string;
-  }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-  };
-}
-
-async function callOpenAI(
-  messages: ChatMessage[],
-  apiKey: string,
-  model: string,
-  signal?: AbortSignal,
-): Promise<OpenAIResponse> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model, messages, max_tokens: 4096 }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI API ${response.status}: ${body}`);
-  }
-
-  return response.json() as Promise<OpenAIResponse>;
-}
 
 // ── Companion Configuration ─────────────────────────────────────
 
@@ -143,6 +125,7 @@ interface CompanionJsonConfig {
   model?: string;
   capabilities?: string[];
   systemPrompt?: string | null;
+  defaults?: RuntimeParams;
 }
 
 /** Resolved runtime config with all fields populated. */
@@ -153,6 +136,7 @@ interface CompanionConfig {
   role: string;
   systemPrompt: string;
   capabilities: string[];
+  defaults: RuntimeParams;
 }
 
 /** Build the default system prompt from the companion's role. */
@@ -237,101 +221,59 @@ function loadConfig(): CompanionConfig {
   const systemPrompt = (typeof json.systemPrompt === 'string')
     ? json.systemPrompt
     : buildSystemPrompt(role);
+  const defaults = json.defaults ?? {};
 
-  return { apiKey, model, name, role, systemPrompt, capabilities };
-}
-
-// ── Companion Agent ─────────────────────────────────────────────
-
-class CompanionAgent implements AgentHandler {
-  readonly id: string;
-  readonly capabilities: string[];
-
-  private readonly apiKey: string;
-  private readonly model: string;
-  private readonly systemPrompt: string;
-  private readonly sessions = new Map<string, { messages: ChatMessage[] }>();
-
-  constructor(config: CompanionConfig) {
-    this.id = config.name;
-    this.capabilities = config.capabilities;
-    this.apiKey = config.apiKey;
-    this.model = config.model;
-    this.systemPrompt = config.systemPrompt;
-  }
-
-  async onSessionCreate(sessionId: string): Promise<void> {
-    this.sessions.set(sessionId, {
-      messages: [{ role: 'system', content: this.systemPrompt }],
-    });
-  }
-
-  async onSessionClose(sessionId: string): Promise<void> {
-    this.sessions.delete(sessionId);
-  }
-
-  async prompt(sessionId: string, input: string, opts?: PromptOpts): Promise<AgentResult> {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      return {
-        text: 'Error: session not initialized. This is a bug — onSessionCreate should have been called.',
-        stopReason: 'end_turn',
-      };
-    }
-
-    session.messages.push({ role: 'user', content: input });
-
-    const response = await callOpenAI(
-      session.messages,
-      this.apiKey,
-      this.model,
-      opts?.signal,
-    );
-
-    const text = response.choices[0]?.message.content ?? 'No response from model.';
-    const finishReason = response.choices[0]?.finish_reason ?? 'stop';
-
-    session.messages.push({ role: 'assistant', content: text });
-
-    return {
-      text,
-      stopReason: finishReason === 'stop' ? 'end_turn' : finishReason,
-      usage: response.usage
-        ? { inputTokens: response.usage.prompt_tokens, outputTokens: response.usage.completion_tokens }
-        : undefined,
-    };
-  }
-
-  async cancel(sessionId: string): Promise<void> {
-    // OpenAI API does not support in-flight cancellation.
-    void sessionId;
-  }
+  return { apiKey, model, name, role, systemPrompt, capabilities, defaults };
 }
 
 // ── Start Server ────────────────────────────────────────────────
 
-const config = loadConfig();
-const agent = new CompanionAgent(config);
+async function main(): Promise<void> {
+  const config = loadConfig();
 
-const server = new McpAgenticServer({ defaultAgentId: config.name })
-  .register(agent);
+  // Create OpenAI provider via the official SDK
+  const openaiProvider = await OpenAIProvider.create({
+    credentials: { apiKey: config.apiKey },
+    models: [config.model],
+    defaults: { model: config.model },
+  });
 
-const shutdown = async (): Promise<void> => {
-  try { await server.close(); } catch { /* best-effort */ }
-  process.exitCode = 0;
-};
+  // Set up provider registry with OpenAI
+  const registry = new ProviderRegistry();
+  registry.register(openaiProvider);
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+  // Create the multi-provider agent (single provider in this case)
+  const agent = new MultiProviderCompanionAgent({
+    id: config.name,
+    defaultProviderId: 'openai',
+    registry,
+    capabilities: config.capabilities,
+    systemPrompt: config.systemPrompt,
+    defaults: config.defaults,
+  });
 
-try {
-  await server.startStdio();
-  process.stderr.write(
-    `[companion] Started — role: "${config.role}", agent: "${config.name}", model: ${config.model}\n`,
-  );
-} catch (error) {
-  process.stderr.write(
-    `[companion] Failed to start: ${error instanceof Error ? error.message : String(error)}\n`,
-  );
-  process.exitCode = 1;
+  const server = new McpAgenticServer({ defaultAgentId: config.name })
+    .register(agent);
+
+  const shutdown = async (): Promise<void> => {
+    try { await server.close(); } catch { /* best-effort */ }
+    process.exitCode = 0;
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
+  try {
+    await server.startStdio();
+    process.stderr.write(
+      `[companion] Started — role: "${config.role}", agent: "${config.name}", model: ${config.model}\n`,
+    );
+  } catch (error) {
+    process.stderr.write(
+      `[companion] Failed to start: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  }
 }
+
+main();

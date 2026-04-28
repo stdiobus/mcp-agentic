@@ -9,7 +9,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=for-the-badge&logo=nodedotjs)](https://github.com/stdiobus/mcp-agentic)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge&logo=opensourceinitiative)](https://github.com/stdiobus/mcp-agentic/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-158%20passing-brightgreen?style=for-the-badge&logo=jest)](https://github.com/stdiobus/mcp-agentic)
+[![Tests](https://img.shields.io/badge/tests-407%20passing-brightgreen?style=for-the-badge&logo=jest)](https://github.com/stdiobus/mcp-agentic)
 
 Agent orchestration server that connects MCP clients to ACP-compatible agents through [stdio Bus](https://stdiobus.com).
 
@@ -24,13 +24,16 @@ Agents run in-process (via `AgentHandler`) or as external worker processes (via 
 
 - **In-process agents** — implement `AgentHandler` and register directly
 - **Worker agents** — route to external ACP processes via stdio Bus
+- **Multi-provider AI** — OpenAI, Anthropic, Google Gemini through native SDKs with a unified `AIProvider` interface
+- **Runtime parameter control** — dynamically adjust model, temperature, systemPrompt, and more through MCP tools on every request
+- **Provider discovery** — discover available providers and their models via `agents_discover`
 - **8 MCP tools** — health, discovery, sessions, cancellation, one-shot delegation
 - **Session management** — TTL, idle expiry, lifecycle hooks
 - **Backpressure** — configurable concurrent request limiting
 - **Input validation** — prompt and metadata size limits
 - **Typed errors** — `BridgeError` categories with retryability info
 
-## Quick Start
+## Basic Quick Start
 
 Create a custom entry point that registers your agents before starting the server:
 
@@ -54,6 +57,64 @@ await server.startStdio();
 ```
 
 This is the primary usage path. Without `register()` calls, no agents are available and delegation tools (`tasks_delegate`, `sessions_create`, etc.) will fail.
+
+## Multi-Provider Quick Start
+
+Use `MultiProviderCompanionAgent` to serve multiple AI providers through a single MCP server. Install the provider SDKs you need:
+
+```bash
+npm install @stdiobus/mcp-agentic
+npm install openai @anthropic-ai/sdk @google/generative-ai
+```
+
+```typescript
+import { McpAgenticServer, ProviderRegistry, OpenAIProvider, AnthropicProvider, GoogleGeminiProvider, MultiProviderCompanionAgent } from '@stdiobus/mcp-agentic';
+
+// 1. Create providers with credentials from environment variables
+const registry = new ProviderRegistry();
+
+registry.register(new OpenAIProvider({
+  credentials: { apiKey: process.env.OPENAI_API_KEY! },
+  models: ['gpt-4o', 'gpt-4o-mini'],
+}));
+
+registry.register(new AnthropicProvider({
+  credentials: { apiKey: process.env.ANTHROPIC_API_KEY! },
+  models: ['claude-sonnet-4-20250514'],
+}));
+
+registry.register(new GoogleGeminiProvider({
+  credentials: { apiKey: process.env.GOOGLE_AI_API_KEY! },
+  models: ['gemini-2.0-flash'],
+}));
+
+// 2. Create a multi-provider agent
+const agent = new MultiProviderCompanionAgent({
+  id: 'multi-ai',
+  defaultProviderId: 'openai',
+  registry,
+  systemPrompt: 'You are a helpful assistant.',
+});
+
+// 3. Register and start
+const server = new McpAgenticServer({ defaultAgentId: 'multi-ai' })
+  .register(agent);
+
+await server.startStdio();
+```
+
+MCP clients can then select a provider per session and override parameters per prompt:
+
+```jsonc
+// Create a session with Anthropic
+{ "tool": "sessions_create", "arguments": { "agentId": "multi-ai", "metadata": { "provider": "anthropic", "runtimeParams": { "model": "claude-sonnet-4-20250514" } } } }
+
+// Send a prompt with runtime parameter overrides
+{ "tool": "sessions_prompt", "arguments": { "sessionId": "...", "prompt": "Explain MCP", "runtimeParams": { "temperature": 0.3, "maxTokens": 200 } } }
+
+// One-shot delegation with a specific provider
+{ "tool": "tasks_delegate", "arguments": { "prompt": "Summarize this", "metadata": { "provider": "google-gemini" }, "runtimeParams": { "temperature": 0 } } }
+```
 
 ## CLI Reference Server
 
@@ -101,6 +162,101 @@ sequenceDiagram
     E->>A: onSessionClose(sessionId)
     E-->>S: void
     S-->>C: { closed: true }
+```
+
+### Provider layer
+
+```mermaid
+graph TB
+    subgraph "MCP Client"
+        C[MCP Client]
+    end
+
+    subgraph "McpAgenticServer"
+        S[McpAgenticServer]
+        TH[Tool Handlers]
+    end
+
+    subgraph "Executor Layer"
+        IPE[InProcessExecutor]
+    end
+
+    subgraph "Agent Layer"
+        MCA[MultiProviderCompanionAgent]
+    end
+
+    subgraph "Provider Layer"
+        PR[ProviderRegistry]
+        OP[OpenAIProvider]
+        AP[AnthropicProvider]
+        GP[GoogleGeminiProvider]
+    end
+
+    subgraph "External SDKs"
+        OSDK[openai npm]
+        ASDK["@anthropic-ai/sdk"]
+        GSDK["@google/generative-ai"]
+    end
+
+    C -->|MCP tools| S
+    S --> TH
+    TH -->|AgentExecutor| IPE
+    IPE -->|AgentHandler| MCA
+    MCA -->|complete| PR
+    PR --> OP
+    PR --> AP
+    PR --> GP
+    OP --> OSDK
+    AP --> ASDK
+    GP --> GSDK
+```
+
+### sessions_prompt with runtimeParams
+
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client
+    participant Server as McpAgenticServer
+    participant Executor as InProcessExecutor
+    participant Agent as MultiProviderCompanionAgent
+    participant Registry as ProviderRegistry
+    participant Provider as AIProvider
+
+    Client->>Server: sessions_prompt({ sessionId, prompt, runtimeParams })
+    Server->>Server: validatePromptSize + withBackpressure
+    Server->>Server: resolveExecutorForSession(sessionId)
+    Note over Server: If runtimeParams present, pass to<br/>agent.setPromptRuntimeParams()
+    Server->>Executor: prompt(sessionId, input, opts)
+    Executor->>Agent: prompt(sessionId, input, opts)
+    Agent->>Agent: merge(configDefaults, sessionParams, promptParams)
+    Agent->>Registry: get(resolvedProviderId)
+    Registry-->>Agent: provider instance
+    Agent->>Provider: complete(messages, mergedParams, signal)
+    Provider-->>Agent: AIProviderResult
+    Agent->>Agent: append to conversation history
+    Agent-->>Executor: AgentResult
+    Executor-->>Server: AgentResult
+    Server-->>Client: MCP response
+```
+
+### sessions_create with provider selection
+
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client
+    participant Server as McpAgenticServer
+    participant Executor as InProcessExecutor
+    participant Agent as MultiProviderCompanionAgent
+
+    Client->>Server: sessions_create({ agentId, metadata: {<br/>provider: "anthropic",<br/>runtimeParams: { model: "claude-sonnet-4-20250514" } } })
+    Server->>Executor: createSession(agentId, metadata)
+    Executor->>Agent: onSessionCreate(sessionId, metadata)
+    Agent->>Agent: extract provider + runtimeParams from metadata
+    Agent->>Agent: validate provider exists in registry
+    Agent->>Agent: store SessionState with providerId + sessionParams
+    Agent-->>Executor: void
+    Executor-->>Server: SessionEntry
+    Server-->>Client: { sessionId, agentId, status }
 ```
 
 ### One-shot delegation (tasks_delegate)
@@ -182,16 +338,16 @@ sequenceDiagram
 
 ## MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `bridge_health` | Check bridge readiness |
-| `agents_discover` | List available agents, optionally filter by capability |
-| `sessions_create` | Create a new agent session |
-| `sessions_prompt` | Send a prompt to an existing session |
-| `sessions_status` | Check session status |
-| `sessions_close` | Close a session |
-| `sessions_cancel` | Cancel an in-flight prompt |
-| `tasks_delegate` | One-shot delegation (create + prompt + close) |
+| Tool | Description | Notes |
+|------|-------------|-------|
+| `bridge_health` | Check bridge readiness | |
+| `agents_discover` | List available agents, optionally filter by capability | Response includes `providers` field with provider IDs and models when the agent supports multiple providers |
+| `sessions_create` | Create a new agent session | Pass `metadata.provider` to select a provider; pass `metadata.runtimeParams` for session-level defaults |
+| `sessions_prompt` | Send a prompt to an existing session | Accepts optional `runtimeParams` for per-prompt overrides (model, temperature, systemPrompt, etc.) |
+| `sessions_status` | Check session status | |
+| `sessions_close` | Close a session | |
+| `sessions_cancel` | Cancel an in-flight prompt | |
+| `tasks_delegate` | One-shot delegation (create + prompt + close) | Accepts optional `runtimeParams` for parameter overrides; pass `metadata.provider` to select a provider |
 
 ## Configuration
 
@@ -219,9 +375,67 @@ server.registerWorker({
 });
 ```
 
+### Provider configuration
+
+Each provider is constructed with a `ProviderConfig`:
+
+```typescript
+interface ProviderConfig {
+  /** Credential key-value pairs sourced from environment variables. */
+  credentials: Record<string, string>;
+  /** Model identifiers available for this provider. */
+  models: string[];
+  /** Default RuntimeParams applied when no override is specified. */
+  defaults?: RuntimeParams;
+}
+```
+
+Example:
+
+```typescript
+import { OpenAIProvider, AnthropicProvider } from '@stdiobus/mcp-agentic';
+
+const openai = new OpenAIProvider({
+  credentials: { apiKey: process.env.OPENAI_API_KEY! },
+  models: ['gpt-4o', 'gpt-4o-mini'],
+  defaults: { temperature: 0.7, maxTokens: 4096 },
+});
+
+const anthropic = new AnthropicProvider({
+  credentials: { apiKey: process.env.ANTHROPIC_API_KEY! },
+  models: ['claude-sonnet-4-20250514'],
+  defaults: { temperature: 0.5 },
+});
+```
+
+### RuntimeParams
+
+`RuntimeParams` controls AI generation behavior and can be specified at three levels with ascending priority:
+
+```
+ProviderConfig.defaults  <  session metadata.runtimeParams  <  prompt-level runtimeParams
+```
+
+Only defined fields override lower-priority values. `undefined` fields are ignored during merge. `providerSpecific` is shallow-merged across all layers.
+
+```typescript
+interface RuntimeParams {
+  model?: string;              // Model identifier
+  temperature?: number;        // Sampling temperature (0–2)
+  maxTokens?: number;          // Maximum tokens to generate
+  topP?: number;               // Nucleus sampling (0–1)
+  topK?: number;               // Top-K sampling
+  stopSequences?: string[];    // Stop sequences
+  systemPrompt?: string;       // System prompt override
+  providerSpecific?: Record<string, unknown>;  // Provider-native parameters
+}
+```
+
 ## Public API
 
 Exported from `@stdiobus/mcp-agentic`:
+
+**Core types:**
 
 - `McpAgenticServer` — main server class
 - `McpAgenticServerConfig` — server configuration type
@@ -229,6 +443,25 @@ Exported from `@stdiobus/mcp-agentic`:
 - `AgentResult`, `AgentEvent`, `AgentChunk`, `AgentFinal`, `AgentError` — result types
 - `PromptOpts`, `StreamOpts` — option types
 - `WorkerConfig` — worker configuration type
+
+**Provider Layer:**
+
+- `AIProvider` — unified provider interface
+- `AIProviderResult` — normalized provider response type
+- `RuntimeParams` — generation parameter type
+- `ProviderConfig` — provider configuration type
+- `ChatMessage` — standard message format type
+- `ProviderRegistry` — provider registry class
+- `ProviderInfo` — provider info type (id + models)
+- `mergeRuntimeParams` — three-level parameter merge utility
+- `OpenAIProvider` — OpenAI provider via native SDK
+- `AnthropicProvider` — Anthropic provider via native SDK
+- `GoogleGeminiProvider` — Google Gemini provider via native SDK
+
+**Multi-Provider Agent:**
+
+- `MultiProviderCompanionAgent` — agent supporting multiple AI providers
+- `MultiProviderCompanionConfig` — multi-provider agent configuration type
 
 ## Development
 
@@ -239,7 +472,28 @@ npm run typecheck    # type checking only
 npm run test:unit    # unit tests (Jest)
 npm run test:e2e     # end-to-end tests
 npm run test:all     # unit + e2e
+npm run test:e2e:providers  # live provider e2e tests (requires API keys)
 ```
+
+### Peer dependencies for provider development
+
+The provider SDKs are peer/optional dependencies. Install only the ones you need:
+
+```bash
+npm install openai                  # OpenAI provider
+npm install @anthropic-ai/sdk       # Anthropic provider
+npm install @google/generative-ai   # Google Gemini provider
+```
+
+### Live provider e2e tests
+
+The `test:e2e:providers` script runs end-to-end tests against real AI provider APIs. Tests are skipped automatically when the corresponding API key is not set:
+
+| Environment Variable | Provider |
+|---------------------|----------|
+| `OPENAI_API_KEY` | OpenAI |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `GOOGLE_AI_API_KEY` | Google Gemini |
 
 ## Steering Guides
 

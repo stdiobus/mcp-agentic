@@ -56,6 +56,23 @@ Agents expose their identity and capabilities through discovery:
 }
 ```
 
+When an agent supports multiple AI providers (e.g., `MultiProviderCompanionAgent`), the discovery response includes an optional `providers` field:
+
+```json
+{
+  "id": "multi-provider-agent",
+  "capabilities": ["general"],
+  "status": "ready",
+  "providers": [
+    { "id": "openai", "models": ["gpt-4o", "gpt-4o-mini"] },
+    { "id": "anthropic", "models": ["claude-sonnet-4-20250514"] },
+    { "id": "google-gemini", "models": ["gemini-2.0-flash"] }
+  ]
+}
+```
+
+The `providers` field is only present when the agent has a `ProviderRegistry` with registered providers. Agents without multi-provider support omit this field entirely.
+
 ### Agent statuses:
 
 - **ready** — agent is available for new sessions
@@ -72,6 +89,49 @@ agents_discover({ capability: "code-analysis" })
 ```
 
 Only agents whose `capabilities` array includes the specified capability are returned.
+
+## Provider discovery
+
+When agents support multiple AI providers, use `agents_discover` to find available providers and their models before creating a session.
+
+### Discovery sequence:
+
+1. **Call `agents_discover`** — retrieve agent list including provider information
+2. **Inspect `providers` field** — check which AI providers are available and their supported models
+3. **Select provider** — choose the appropriate provider based on task requirements
+4. **Create session with provider** — pass `metadata.provider` to `sessions_create`
+
+### Provider selection rules:
+
+- **By model availability** — choose the provider that supports the model you need (e.g., `gpt-4o` → `openai`, `claude-sonnet-4-20250514` → `anthropic`)
+- **By capability match** — some providers may be better suited for specific tasks (e.g., code generation, creative writing)
+- **By cost/latency tradeoff** — different providers have different pricing and response times
+- **Default provider** — when no provider is specified, the agent uses its configured `defaultProviderId`
+
+### Example: discover providers and select one
+
+```
+agents_discover({})
+→ [{
+    id: "multi-provider-agent",
+    capabilities: ["general"],
+    status: "ready",
+    providers: [
+      { id: "openai", models: ["gpt-4o", "gpt-4o-mini"] },
+      { id: "anthropic", models: ["claude-sonnet-4-20250514"] }
+    ]
+  }]
+
+sessions_create({
+  agentId: "multi-provider-agent",
+  metadata: { provider: "anthropic" }
+})
+→ { sessionId: "abc-123", agentId: "multi-provider-agent", status: "active" }
+```
+
+### Provider not found:
+
+If `metadata.provider` specifies an unregistered provider id, `sessions_create` fails with `BridgeError.config('Provider "{id}" is not registered in the ProviderRegistry')`.
 
 ## Routing constraints
 

@@ -134,3 +134,183 @@ For actual agent delegation, create your own entry point that calls `server.regi
 4. **Pass credentials via `env`** — use `WorkerConfig.env` for worker process secrets
 5. **Handle signals** — always wire up `SIGINT`/`SIGTERM` to `server.close()`
 6. **Monitor health** — use `bridge_health` to check readiness before delegating
+7. **Install only needed SDKs** — provider SDKs are peer/optional dependencies; install only the ones you use
+8. **Use runtime params for dynamic control** — adjust model, temperature, and system prompt per request without restarting
+
+## Provider configuration
+
+### ProviderConfig
+
+Each AI provider is constructed with a `ProviderConfig` that separates credentials from behavior:
+
+```typescript
+interface ProviderConfig {
+  credentials: Record<string, string>;  // e.g., { apiKey: 'sk-...' }
+  models: string[];                      // e.g., ['gpt-4o', 'gpt-4o-mini']
+  defaults?: RuntimeParams;              // Default generation parameters
+}
+```
+
+- `credentials` — key-value pairs sourced from environment variables by the caller. Providers do not access `process.env` directly after construction.
+- `models` — list of model identifiers available for this provider.
+- `defaults` — optional default `RuntimeParams` applied when no override is specified.
+
+### Credential validation:
+
+Providers validate required credentials at construction time. If a required key (e.g., `apiKey`) is missing or empty, the constructor throws `BridgeError.config('Missing required credential: apiKey')`.
+
+### Example:
+
+```typescript
+import { OpenAIProvider } from '@stdiobus/mcp-agentic';
+
+const openai = new OpenAIProvider({
+  credentials: { apiKey: process.env.OPENAI_API_KEY ?? '' },
+  models: ['gpt-4o', 'gpt-4o-mini'],
+  defaults: { temperature: 0.7, maxTokens: 4096 },
+});
+```
+
+## Multi-provider agent setup
+
+### MultiProviderCompanionConfig
+
+`MultiProviderCompanionAgent` is configured with a `ProviderRegistry` and a default provider:
+
+```typescript
+interface MultiProviderCompanionConfig {
+  id: string;                    // Unique agent identifier
+  defaultProviderId: string;     // Provider used when none specified
+  registry: ProviderRegistry;    // Registry of available providers
+  capabilities?: string[];       // Agent capabilities for discovery
+  systemPrompt?: string;         // Default system prompt
+  defaults?: RuntimeParams;      // Agent-level default parameters
+}
+```
+
+### ProviderRegistry
+
+The `ProviderRegistry` manages provider instances:
+
+```typescript
+const registry = new ProviderRegistry();
+registry.register(openaiProvider);    // Register OpenAI
+registry.register(anthropicProvider); // Register Anthropic
+registry.register(geminiProvider);    // Register Gemini
+
+registry.has('openai');    // true
+registry.get('openai');    // Returns the OpenAI provider instance
+registry.list();           // [{ id: 'openai', models: [...] }, ...]
+```
+
+- `register(provider)` — throws `BridgeError.config` if a provider with the same id is already registered
+- `get(id)` — throws `BridgeError.upstream` if the provider is not found
+- `has(id)` — returns boolean
+- `list()` — returns `ProviderInfo[]` with id and models for each provider
+
+### Full server setup example:
+
+```typescript
+import {
+  McpAgenticServer,
+  ProviderRegistry,
+  MultiProviderCompanionAgent,
+  OpenAIProvider,
+  AnthropicProvider,
+  GoogleGeminiProvider,
+} from '@stdiobus/mcp-agentic';
+
+// Create providers
+const registry = new ProviderRegistry();
+
+registry.register(new OpenAIProvider({
+  credentials: { apiKey: process.env.OPENAI_API_KEY ?? '' },
+  models: ['gpt-4o', 'gpt-4o-mini'],
+}));
+
+registry.register(new AnthropicProvider({
+  credentials: { apiKey: process.env.ANTHROPIC_API_KEY ?? '' },
+  models: ['claude-sonnet-4-20250514'],
+}));
+
+registry.register(new GoogleGeminiProvider({
+  credentials: { apiKey: process.env.GOOGLE_AI_API_KEY ?? '' },
+  models: ['gemini-2.0-flash'],
+}));
+
+// Create multi-provider agent
+const agent = new MultiProviderCompanionAgent({
+  id: 'my-agent',
+  defaultProviderId: 'openai',
+  registry,
+  capabilities: ['general'],
+  systemPrompt: 'You are a helpful assistant.',
+  defaults: { temperature: 0.7 },
+});
+
+// Register and start
+const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
+  .register(agent);
+
+await server.startStdio();
+```
+
+## RuntimeParams
+
+### Fields
+
+| Field | Type | Range | Description |
+|-------|------|-------|-------------|
+| `model` | `string` | — | Model identifier |
+| `temperature` | `number` | 0–2 | Sampling temperature |
+| `maxTokens` | `number` | positive int | Max tokens to generate |
+| `topP` | `number` | 0–1 | Nucleus sampling |
+| `topK` | `number` | positive int | Top-K sampling |
+| `stopSequences` | `string[]` | — | Stop sequences |
+| `systemPrompt` | `string` | — | System prompt override |
+| `providerSpecific` | `Record<string, unknown>` | — | Provider-native parameters |
+
+### Merge priority
+
+Parameters are merged in ascending priority:
+
+```
+ProviderConfig.defaults  <  session metadata.runtimeParams  <  prompt-level runtimeParams
+```
+
+- Only defined (non-`undefined`) fields from higher-priority layers override lower ones.
+- `providerSpecific` is shallow-merged (spread) across all layers, not replaced.
+
+### providerSpecific
+
+The `providerSpecific` field passes provider-native parameters that are not covered by the common fields. Unsupported keys are silently ignored by the provider.
+
+```typescript
+runtimeParams: {
+  temperature: 0.5,
+  providerSpecific: {
+    frequency_penalty: 0.8,  // OpenAI-specific
+    presence_penalty: 0.3,   // OpenAI-specific
+  }
+}
+```
+
+## Peer dependencies
+
+Provider SDKs are peer/optional dependencies. Install only the SDKs you need:
+
+```bash
+# OpenAI
+npm install openai
+
+# Anthropic
+npm install @anthropic-ai/sdk
+
+# Google Gemini
+npm install @google/generative-ai
+
+# All providers
+npm install openai @anthropic-ai/sdk @google/generative-ai
+```
+
+If a provider SDK is not installed, constructing that provider will fail with an import error. Only install the SDKs for providers you intend to use.
