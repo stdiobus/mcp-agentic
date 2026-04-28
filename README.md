@@ -130,9 +130,37 @@ The `mcp.json` shipped with this package references the CLI binary and is provid
 
 ## Architecture
 
-### Session lifecycle (in-process agent)
+```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'edgeLabelBackground':'#1a1a2e','lineColor':'#4a90e2','textColor':'#ddd'}}}%%
+graph LR
+    C[MCP Client] -->|MCP tools| S[McpAgenticServer] --> IPE[InProcessExecutor]
+    IPE -->|AgentHandler| MCA[MultiProviderCompanionAgent]
+    MCA --> PR[ProviderRegistry]
+    PR --> OP[OpenAIProvider] --> OSDK[openai]
+    PR --> AP[AnthropicProvider] --> ASDK["@anthropic-ai/sdk"]
+    PR --> GP[GoogleGeminiProvider] --> GSDK["@google/generative-ai"]
+
+    %% ── Styles ──
+    classDef client fill:#1a1a2e,stroke:#f39c12,stroke-width:2px,color:#fff
+    classDef kernel fill:#1a1a2e,stroke:#4a90e2,stroke-width:3px,color:#fff,font-weight:bold
+    classDef worker fill:#16213e,stroke:#50c878,stroke-width:2px,color:#fff
+    classDef agent fill:#0f3460,stroke:#9b59b6,stroke-width:1px,color:#ddd
+    classDef proxy fill:#16213e,stroke:#e67e22,stroke-width:2px,color:#fff
+    classDef external fill:#1a1a2e,stroke:#95a5a6,stroke-width:1px,color:#bbb,font-style:italic
+
+    class C client
+    class S,IPE kernel
+    class MCA agent
+    class PR proxy
+    class OP,AP,GP worker
+    class OSDK,ASDK,GSDK external
+```
+
+<details>
+<summary>Session lifecycle — create → prompt → close (in-process agent)</summary>
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
 sequenceDiagram
     participant C as MCP Client
     participant S as McpAgenticServer
@@ -164,56 +192,13 @@ sequenceDiagram
     S-->>C: { closed: true }
 ```
 
-### Provider layer
+</details>
+
+<details>
+<summary>sessions_prompt with runtimeParams — parameter merge and provider delegation</summary>
 
 ```mermaid
-graph TB
-    subgraph "MCP Client"
-        C[MCP Client]
-    end
-
-    subgraph "McpAgenticServer"
-        S[McpAgenticServer]
-        TH[Tool Handlers]
-    end
-
-    subgraph "Executor Layer"
-        IPE[InProcessExecutor]
-    end
-
-    subgraph "Agent Layer"
-        MCA[MultiProviderCompanionAgent]
-    end
-
-    subgraph "Provider Layer"
-        PR[ProviderRegistry]
-        OP[OpenAIProvider]
-        AP[AnthropicProvider]
-        GP[GoogleGeminiProvider]
-    end
-
-    subgraph "External SDKs"
-        OSDK[openai npm]
-        ASDK["@anthropic-ai/sdk"]
-        GSDK["@google/generative-ai"]
-    end
-
-    C -->|MCP tools| S
-    S --> TH
-    TH -->|AgentExecutor| IPE
-    IPE -->|AgentHandler| MCA
-    MCA -->|complete| PR
-    PR --> OP
-    PR --> AP
-    PR --> GP
-    OP --> OSDK
-    AP --> ASDK
-    GP --> GSDK
-```
-
-### sessions_prompt with runtimeParams
-
-```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
 sequenceDiagram
     participant Client as MCP Client
     participant Server as McpAgenticServer
@@ -239,9 +224,13 @@ sequenceDiagram
     Server-->>Client: MCP response
 ```
 
-### sessions_create with provider selection
+</details>
+
+<details>
+<summary>sessions_create with provider selection — binding a session to a specific AI provider</summary>
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
 sequenceDiagram
     participant Client as MCP Client
     participant Server as McpAgenticServer
@@ -259,9 +248,13 @@ sequenceDiagram
     Server-->>Client: { sessionId, agentId, status }
 ```
 
-### One-shot delegation (tasks_delegate)
+</details>
+
+<details>
+<summary>One-shot delegation — tasks_delegate flow</summary>
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
 sequenceDiagram
     participant C as MCP Client
     participant S as McpAgenticServer
@@ -283,9 +276,13 @@ sequenceDiagram
     S-->>C: { success: true, text, stopReason }
 ```
 
-### Worker path (external ACP process)
+</details>
+
+<details>
+<summary>Worker path — external ACP process via StdioBus</summary>
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
 sequenceDiagram
     participant C as MCP Client
     participant S as McpAgenticServer
@@ -305,9 +302,13 @@ sequenceDiagram
     S-->>C: { text, stopReason }
 ```
 
-### Executor resolution (in-process priority)
+</details>
+
+<details>
+<summary>Executor resolution — in-process priority and caching</summary>
 
 ```mermaid
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
 sequenceDiagram
     participant S as McpAgenticServer
     participant Cache as agentExecutorCache
@@ -335,6 +336,8 @@ sequenceDiagram
         end
     end
 ```
+
+</details>
 
 ## MCP Tools
 
