@@ -141,7 +141,7 @@ export class GoogleGeminiProvider implements AIProvider {
    */
   static async create(config: ProviderConfig): Promise<GoogleGeminiProvider> {
     try {
-      // @ts-expect-error — @google/generative-ai is an optional peer dependency; may not be installed
+      // @ts-ignore — @google/generative-ai is an optional peer dependency; may not be installed
       const geminiModule = await import('@google/generative-ai');
       const GoogleGenerativeAI = geminiModule.GoogleGenerativeAI ?? geminiModule.default;
       return new GoogleGeminiProvider(config, GoogleGenerativeAI as any);
@@ -291,8 +291,10 @@ export class GoogleGeminiProvider implements AIProvider {
   /**
    * Map Google Gemini SDK errors to typed BridgeError categories.
    *
-   * The Gemini SDK uses status-based error classification. Errors may
-   * contain a `status` property or specific error message patterns.
+   * The real Gemini SDK throws `GoogleGenerativeAIFetchError` with numeric
+   * HTTP `status` (401, 429, etc.) and `GoogleGenerativeAIAbortError` for
+   * cancellations. The mock uses string gRPC status codes ('UNAUTHENTICATED',
+   * 'RESOURCE_EXHAUSTED', etc.). This method handles both.
    */
   private mapError(err: unknown): BridgeError {
     const details = { providerId: this.id };
@@ -305,24 +307,37 @@ export class GoogleGeminiProvider implements AIProvider {
     const error = err as Record<string, unknown>;
     const message = (error?.['message'] as string) ?? String(err);
     const cause = err instanceof Error ? err : new Error(message);
-    const status = (error?.['status'] as string | undefined);
+    const status = error?.['status'];
     const errorName = (err as any)?.constructor?.name as string | undefined;
 
-    // Check for GoogleGenerativeAIError or similar named errors with status
-    if (status === 'UNAUTHENTICATED' || errorName === 'AuthenticationError') {
+    // Authentication errors: HTTP 401/403 or gRPC UNAUTHENTICATED
+    if (status === 401 || status === 403 || status === 'UNAUTHENTICATED' || errorName === 'AuthenticationError') {
       return BridgeError.auth(message, details, cause);
     }
 
-    if (status === 'RESOURCE_EXHAUSTED' || errorName === 'RateLimitError') {
+    // Rate limiting: HTTP 429 or gRPC RESOURCE_EXHAUSTED
+    if (status === 429 || status === 'RESOURCE_EXHAUSTED' || errorName === 'RateLimitError') {
       return new BridgeError('UPSTREAM', message, { ...details, retryable: true }, cause);
     }
 
-    if (status === 'INVALID_ARGUMENT' || errorName === 'BadRequestError') {
+    // Bad request: HTTP 400 or gRPC INVALID_ARGUMENT
+    if (status === 400 || status === 'INVALID_ARGUMENT' || errorName === 'BadRequestError') {
       return new BridgeError('UPSTREAM', message, { ...details, retryable: false }, cause);
     }
 
-    if (status === 'INTERNAL' || errorName === 'InternalServerError') {
+    // Not found: HTTP 404 (e.g., nonexistent model)
+    if (status === 404 || status === 'NOT_FOUND') {
+      return new BridgeError('UPSTREAM', message, { ...details, retryable: false }, cause);
+    }
+
+    // Internal server error: HTTP 500+ or gRPC INTERNAL
+    if ((typeof status === 'number' && status >= 500) || status === 'INTERNAL' || errorName === 'InternalServerError') {
       return new BridgeError('UPSTREAM', message, { ...details, retryable: true }, cause);
+    }
+
+    // Abort/cancellation errors (GoogleGenerativeAIAbortError)
+    if (errorName === 'GoogleGenerativeAIAbortError') {
+      return BridgeError.timeout(message, { ...details, retryable: true }, cause);
     }
 
     // Network/fetch errors

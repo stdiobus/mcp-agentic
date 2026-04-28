@@ -118,7 +118,7 @@ export class AnthropicProvider implements AIProvider {
    */
   static async create(config: ProviderConfig): Promise<AnthropicProvider> {
     try {
-      // @ts-expect-error — @anthropic-ai/sdk is an optional peer dependency; may not be installed
+      // @ts-ignore — @anthropic-ai/sdk is an optional peer dependency; may not be installed
       const anthropicModule = await import('@anthropic-ai/sdk');
       const Anthropic = anthropicModule.default ?? anthropicModule;
       return new AnthropicProvider(config, Anthropic as any);

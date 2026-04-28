@@ -109,7 +109,7 @@ export class OpenAIProvider implements AIProvider {
    */
   static async create(config: ProviderConfig): Promise<OpenAIProvider> {
     try {
-      // @ts-expect-error — openai is an optional peer dependency; may not be installed
+      // @ts-ignore — openai is an optional peer dependency; may not be installed
       const openaiModule = await import('openai');
       const OpenAI = openaiModule.default ?? openaiModule;
       return new OpenAIProvider(config, OpenAI as any);

@@ -195,6 +195,10 @@ export class InProcessExecutor implements AgentExecutor {
       } catch (err) {
         // Clean up on hook failure
         this.sessions.delete(sessionId);
+        // Re-throw BridgeErrors directly to preserve specific error info
+        if (err instanceof BridgeError) {
+          throw err;
+        }
         throw BridgeError.upstream(
           `Agent ${agent.id} failed during onSessionCreate`,
           {},
