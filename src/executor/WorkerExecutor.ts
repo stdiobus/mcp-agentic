@@ -15,6 +15,7 @@
  */
 
 import { StdioBus } from '@stdiobus/node';
+import type { StdioBusOptions, StdioBusConfig } from '@stdiobus/node';
 import type { AgentExecutor } from './AgentExecutor.js';
 import type { AgentInfo, SessionEntry, HealthInfo, WorkerConfig } from './types.js';
 import type { AgentResult, PromptOpts } from '../agent/AgentHandler.js';
@@ -78,15 +79,23 @@ export class WorkerExecutor implements AgentExecutor {
     }
 
     try {
-      const pools = this.workers.map((w) => ({
+      const pools: StdioBusConfig['pools'] = this.workers.map((w) => ({
         id: w.id,
         command: w.command,
         args: w.args,
         instances: 1,
-        ...(w.env !== undefined ? { env: w.env } : {}),
+        // TODO: WorkerConfig.env is accepted by our public API but
+        // StdioBusConfig.pools does not include `env`. When @stdiobus/node
+        // adds env support to pool definitions, pass w.env here.
       }));
 
-      this.bus = new StdioBus({ config: { pools } });
+      // Type-checked against StdioBusOptions to catch property renames at
+      // compile time. Without `satisfies`, a renamed property (e.g.
+      // configJson → config) would be silently ignored at runtime, causing
+      // an opaque "Connection closed" crash on the MCP client side.
+      const busOptions = { config: { pools } } satisfies StdioBusOptions;
+
+      this.bus = new StdioBus(busOptions);
       await this.bus.start();
 
       this.ready = true;
