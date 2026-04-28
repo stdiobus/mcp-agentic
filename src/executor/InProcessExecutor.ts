@@ -73,6 +73,20 @@ export class InProcessExecutor implements AgentExecutor {
     this.agents.set(agent.id, agent);
   }
 
+  /**
+   * Retrieve a registered agent by ID.
+   *
+   * This is an internal method used by {@link McpAgenticServer} to access
+   * agent-specific capabilities (e.g., `setPromptRuntimeParams`) via duck-typing.
+   * It is intentionally NOT part of the {@link AgentExecutor} interface.
+   *
+   * @param agentId - The agent identifier to look up.
+   * @returns The agent instance, or `undefined` if not registered.
+   */
+  getAgent(agentId: string): AgentHandler | undefined {
+    return this.agents.get(agentId);
+  }
+
   // ── AgentExecutor lifecycle ───────────────────────────────────
 
   /**

@@ -12,6 +12,8 @@ export interface AgentInfo {
   capabilities: string[];
   /** Current availability status. */
   status: 'ready' | 'busy' | 'unavailable';
+  /** AI providers available for this agent, present only when the agent supports multiple providers. */
+  providers?: Array<{ id: string; models: readonly string[] }>;
 }
 
 /** Snapshot of a session's state returned by session management methods. */

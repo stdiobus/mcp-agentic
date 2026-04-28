@@ -47,3 +47,25 @@ export type {
 // ─── Worker configuration ────────────────────────────────────────
 
 export type { WorkerConfig } from './executor/types.js';
+
+// ─── Provider Layer ──────────────────────────────────────────────
+
+export type {
+  AIProvider,
+  AIProviderResult,
+  RuntimeParams,
+  ProviderConfig,
+  ChatMessage,
+} from './provider/index.js';
+
+export { mergeRuntimeParams, ProviderRegistry } from './provider/index.js';
+export type { ProviderInfo } from './provider/index.js';
+
+export { OpenAIProvider } from './provider/index.js';
+export { AnthropicProvider } from './provider/index.js';
+export { GoogleGeminiProvider } from './provider/index.js';
+
+// ─── Multi-Provider Agent ────────────────────────────────────────
+
+export { MultiProviderCompanionAgent } from './agent/MultiProviderCompanionAgent.js';
+export type { MultiProviderCompanionConfig } from './agent/MultiProviderCompanionAgent.js';

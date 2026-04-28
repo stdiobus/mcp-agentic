@@ -13,8 +13,42 @@
 
 import type { AgentExecutor } from '../../executor/AgentExecutor.js';
 import type { AgentInfo } from '../../executor/types.js';
+import type { ProviderRegistry } from '../../provider/ProviderRegistry.js';
 import { AgentsDiscoverArgsSchema } from '../../types.js';
 import { mapErrorToMCP } from '../../errors/error-mapper.js';
+
+// ── Duck-typing helpers ─────────────────────────────────────────
+
+/** Duck-type check: executor exposes getAgent(id) for agent-level introspection. */
+interface ExecutorWithGetAgent {
+  getAgent(agentId: string): { getProviderRegistry?: () => ProviderRegistry } | undefined;
+}
+
+/** Returns true if the executor supports getAgent() (e.g., InProcessExecutor). */
+function hasGetAgent(executor: AgentExecutor): executor is AgentExecutor & ExecutorWithGetAgent {
+  return typeof (executor as unknown as ExecutorWithGetAgent).getAgent === 'function';
+}
+
+/**
+ * Enrich an AgentInfo with provider information if the underlying agent
+ * exposes a ProviderRegistry via getProviderRegistry().
+ */
+function enrichWithProviders(
+  agent: AgentInfo,
+  executor: AgentExecutor,
+): AgentInfo {
+  if (!hasGetAgent(executor)) return agent;
+
+  const handler = executor.getAgent(agent.id);
+  if (!handler || typeof handler.getProviderRegistry !== 'function') return agent;
+
+  const registry = handler.getProviderRegistry();
+  const providers = registry.list();
+
+  if (providers.length === 0) return agent;
+
+  return { ...agent, providers };
+}
 
 /** Input shape for the `agents_discover` tool handler. */
 export type AgentsDiscoverInput = {
@@ -87,11 +121,11 @@ export async function handleCombinedDiscover(
     // Deduplicate by agent ID, in-process agents take precedence
     const agentMap = new Map<string, AgentInfo>();
     for (const agent of inProcessAgents) {
-      agentMap.set(agent.id, agent);
+      agentMap.set(agent.id, enrichWithProviders(agent, inProcessExecutor));
     }
     for (const agent of workerAgents) {
       if (!agentMap.has(agent.id)) {
-        agentMap.set(agent.id, agent);
+        agentMap.set(agent.id, enrichWithProviders(agent, workerExecutor!));
       }
     }
     const agents = Array.from(agentMap.values());
