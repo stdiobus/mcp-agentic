@@ -61,6 +61,9 @@ export type {
 export { mergeRuntimeParams, ProviderRegistry } from './provider/index.js';
 export type { ProviderInfo } from './provider/index.js';
 
+export type { ModelProfile, MappableParam } from './provider/index.js';
+export { mapParameters } from './provider/index.js';
+
 export { OpenAIProvider, getMaxTokensParamName } from './provider/index.js';
 export { AnthropicProvider } from './provider/index.js';
 export { GoogleGeminiProvider } from './provider/index.js';

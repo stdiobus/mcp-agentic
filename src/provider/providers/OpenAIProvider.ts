@@ -22,6 +22,8 @@ import type {
   RuntimeParams,
 } from '../AIProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
+import type { ModelProfile } from '../ParameterMapper.js';
+import { mapParameters } from '../ParameterMapper.js';
 
 // ── Stop reason mapping ─────────────────────────────────────────
 
@@ -83,6 +85,49 @@ export function getMaxTokensParamName(model: string): 'max_tokens' | 'max_comple
   }
   return 'max_completion_tokens';
 }
+
+// ── OpenAI model profiles ───────────────────────────────────────
+
+/**
+ * Declarative parameter mapping profiles for OpenAI models.
+ *
+ * Default profile maps to modern `max_completion_tokens` parameter.
+ * Legacy models (GPT-4o, GPT-4, GPT-3.5) override to `max_tokens`.
+ *
+ * The profiles encode the same logic as {@link getMaxTokensParamName} but in
+ * a declarative, data-driven form usable by {@link mapParameters}.
+ */
+const OPENAI_PROFILES: readonly ModelProfile[] = [
+  // Default: modern parameter names (o-series, GPT-5+, unknown models)
+  {
+    match: 'default',
+    renames: {
+      temperature: 'temperature',
+      maxTokens: 'max_completion_tokens',
+      topP: 'top_p',
+      stopSequences: 'stop',
+    },
+    exclude: ['topK'],
+  },
+  // Legacy models: GPT-4o family uses max_tokens
+  {
+    match: 'prefix',
+    pattern: 'gpt-4o',
+    renames: { maxTokens: 'max_tokens' },
+  },
+  // Legacy models: GPT-4 family uses max_tokens
+  {
+    match: 'prefix',
+    pattern: 'gpt-4',
+    renames: { maxTokens: 'max_tokens' },
+  },
+  // Legacy models: GPT-3.5 family uses max_tokens
+  {
+    match: 'prefix',
+    pattern: 'gpt-3.5',
+    renames: { maxTokens: 'max_tokens' },
+  },
+];
 
 // ── Types for the OpenAI SDK (minimal surface used) ─────────────
 
@@ -219,21 +264,8 @@ export class OpenAIProvider implements AIProvider {
     const body: Record<string, unknown> = {
       model,
       messages: openaiMessages,
+      ...mapParameters(OPENAI_PROFILES, model, params),
     };
-
-    if (params.temperature !== undefined) {
-      body['temperature'] = params.temperature;
-    }
-    if (params.maxTokens !== undefined) {
-      const maxTokensParam = getMaxTokensParamName(model);
-      body[maxTokensParam] = params.maxTokens;
-    }
-    if (params.topP !== undefined) {
-      body['top_p'] = params.topP;
-    }
-    if (params.stopSequences !== undefined) {
-      body['stop'] = params.stopSequences;
-    }
 
     // Spread providerSpecific — unsupported keys are passed through to the SDK
     if (params.providerSpecific) {

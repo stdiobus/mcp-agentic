@@ -22,6 +22,8 @@ import type {
   RuntimeParams,
 } from '../AIProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
+import type { ModelProfile } from '../ParameterMapper.js';
+import { mapParameters } from '../ParameterMapper.js';
 
 // ── Stop reason mapping ─────────────────────────────────────────
 
@@ -29,6 +31,28 @@ const STOP_REASON_MAP: Record<string, string> = {
   end_turn: 'end_turn',
   max_tokens: 'max_tokens',
 };
+
+// ── Anthropic model profiles ────────────────────────────────────
+
+/**
+ * Declarative parameter mapping profiles for Anthropic models.
+ *
+ * All current Anthropic models use the same parameter names.
+ * The default profile handles the full mapping.
+ */
+const ANTHROPIC_PROFILES: readonly ModelProfile[] = [
+  {
+    match: 'default',
+    renames: {
+      temperature: 'temperature',
+      maxTokens: 'max_tokens',
+      topP: 'top_p',
+      topK: 'top_k',
+      stopSequences: 'stop_sequences',
+    },
+    defaults: { max_tokens: 1024 },
+  },
+];
 
 // ── Types for the Anthropic SDK (minimal surface used) ──────────
 
@@ -168,24 +192,11 @@ export class AnthropicProvider implements AIProvider {
     const body: Record<string, unknown> = {
       model,
       messages: anthropicMessages,
-      max_tokens: params.maxTokens ?? this.defaults.maxTokens ?? 1024,
+      ...mapParameters(ANTHROPIC_PROFILES, model, params),
     };
 
     if (systemPrompt) {
       body['system'] = systemPrompt;
-    }
-
-    if (params.temperature !== undefined) {
-      body['temperature'] = params.temperature;
-    }
-    if (params.topP !== undefined) {
-      body['top_p'] = params.topP;
-    }
-    if (params.topK !== undefined) {
-      body['top_k'] = params.topK;
-    }
-    if (params.stopSequences !== undefined) {
-      body['stop_sequences'] = params.stopSequences;
     }
 
     // Spread providerSpecific — unsupported keys are passed through to the SDK

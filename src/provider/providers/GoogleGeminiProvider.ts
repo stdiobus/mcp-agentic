@@ -22,6 +22,8 @@ import type {
   RuntimeParams,
 } from '../AIProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
+import type { ModelProfile } from '../ParameterMapper.js';
+import { mapParameters } from '../ParameterMapper.js';
 
 // ── Stop reason mapping ─────────────────────────────────────────
 
@@ -30,6 +32,27 @@ const STOP_REASON_MAP: Record<string, string> = {
   MAX_TOKENS: 'max_tokens',
   SAFETY: 'content_filter',
 };
+
+// ── Gemini model profiles ───────────────────────────────────────
+
+/**
+ * Declarative parameter mapping profiles for Google Gemini models.
+ *
+ * All current Gemini models use the same parameter names.
+ * The default profile handles the full mapping.
+ */
+const GEMINI_PROFILES: readonly ModelProfile[] = [
+  {
+    match: 'default',
+    renames: {
+      temperature: 'temperature',
+      maxTokens: 'maxOutputTokens',
+      topP: 'topP',
+      topK: 'topK',
+      stopSequences: 'stopSequences',
+    },
+  },
+];
 
 // ── Types for the Gemini SDK (minimal surface used) ─────────────
 
@@ -183,23 +206,8 @@ export class GoogleGeminiProvider implements AIProvider {
     // Convert ChatMessage[] to Gemini Content[] format
     const { contents, systemInstruction } = this.convertMessages(messages, params.systemPrompt);
 
-    // Build generation config
-    const generationConfig: GeminiGenerationConfig = {};
-    if (params.temperature !== undefined) {
-      generationConfig.temperature = params.temperature;
-    }
-    if (params.maxTokens !== undefined) {
-      generationConfig.maxOutputTokens = params.maxTokens;
-    }
-    if (params.topP !== undefined) {
-      generationConfig.topP = params.topP;
-    }
-    if (params.topK !== undefined) {
-      generationConfig.topK = params.topK;
-    }
-    if (params.stopSequences !== undefined) {
-      generationConfig.stopSequences = params.stopSequences;
-    }
+    // Build generation config via ParameterMapper
+    const generationConfig = mapParameters(GEMINI_PROFILES, model, params) as GeminiGenerationConfig;
 
     try {
       const generativeModel = this.client.getGenerativeModel({ model });

@@ -30,6 +30,11 @@ export { mergeRuntimeParams } from './AIProvider.js';
 export { ProviderRegistry } from './ProviderRegistry.js';
 export type { ProviderInfo } from './ProviderRegistry.js';
 
+// ── ParameterMapper ─────────────────────────────────────────────
+
+export type { ModelProfile, MappableParam } from './ParameterMapper.js';
+export { mapParameters } from './ParameterMapper.js';
+
 // ── Concrete provider implementations ───────────────────────────
 
 export { OpenAIProvider, getMaxTokensParamName } from './providers/OpenAIProvider.js';
