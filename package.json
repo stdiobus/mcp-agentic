@@ -1,6 +1,6 @@
 {
   "name": "@stdiobus/mcp-agentic",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "description": "MCP Agentic: agent orchestration server via stdio Bus",
   "main": "out/dist/index.js",
