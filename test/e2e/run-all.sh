@@ -39,7 +39,8 @@ for test_file in \
   "$SCRIPT_DIR/mcp-agentic-e2e.ts" \
   "$SCRIPT_DIR/mcp-agentic-stdio-e2e.ts" \
   "$SCRIPT_DIR/mcp-agentic-pack-e2e.ts" \
-  "$SCRIPT_DIR/publish-blockers-e2e.ts"
+  "$SCRIPT_DIR/publish-blockers-e2e.ts" \
+  "$SCRIPT_DIR/factory-api-e2e.ts"
 do
   test_name="$(basename "$test_file")"
 

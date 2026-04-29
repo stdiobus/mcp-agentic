@@ -976,4 +976,30 @@ describe('OpenAIProvider', () => {
       );
     });
   });
+
+  // ── Kind and capabilities ─────────────────────────────────────
+
+  describe('kind and capabilities', () => {
+    it('should have kind set to "llm"', () => {
+      const provider = createProvider();
+      expect(provider.kind).toBe('llm');
+    });
+
+    it('should have correct capabilities', () => {
+      const provider = createProvider();
+      expect(provider.capabilities).toEqual({
+        streaming: true,
+        tools: true,
+        vision: true,
+        jsonMode: true,
+      });
+    });
+
+    it('should have readonly kind and capabilities', () => {
+      const provider = createProvider();
+      // Verify the properties exist and are the expected type
+      expect(typeof provider.kind).toBe('string');
+      expect(typeof provider.capabilities).toBe('object');
+    });
+  });
 });

@@ -19,7 +19,7 @@ import { handleCombinedDiscover } from '../../../../src/mcp/tools/agents.js';
 import { InProcessExecutor } from '../../../../src/executor/InProcessExecutor.js';
 import { ProviderRegistry } from '../../../../src/provider/ProviderRegistry.js';
 import { MultiProviderCompanionAgent } from '../../../../src/agent/MultiProviderCompanionAgent.js';
-import type { AIProvider, AIProviderResult } from '../../../../src/provider/AIProvider.js';
+import type { AIProvider, AIProviderResult, ProviderKind, ProviderCapabilities } from '../../../../src/provider/AIProvider.js';
 import type { AgentInfo } from '../../../../src/executor/types.js';
 import { createMockExecutor } from './_mockExecutor.js';
 
@@ -34,6 +34,29 @@ function createMockProvider(
   return {
     id,
     models: Object.freeze(models),
+    complete: jest.fn<any>().mockResolvedValue(result),
+  };
+}
+
+/** Create a mock AIProvider with enriched metadata fields. */
+function createEnrichedProvider(
+  id: string,
+  models: string[],
+  extra: {
+    kind?: ProviderKind;
+    capabilities?: ProviderCapabilities;
+    displayName?: string;
+    description?: string;
+  } = {},
+): AIProvider & Record<string, unknown> {
+  const result: AIProviderResult = { text: 'response', stopReason: 'end_turn' };
+  return {
+    id,
+    models: Object.freeze(models),
+    ...(extra.kind !== undefined ? { kind: extra.kind } : {}),
+    ...(extra.capabilities !== undefined ? { capabilities: extra.capabilities } : {}),
+    ...(extra.displayName !== undefined ? { displayName: extra.displayName } : {}),
+    ...(extra.description !== undefined ? { description: extra.description } : {}),
     complete: jest.fn<any>().mockResolvedValue(result),
   };
 }
@@ -333,6 +356,243 @@ describe('agents_discover — Provider enrichment', () => {
       expect(parsed.agents[0]!.providers).toEqual([{ id: 'dummy', models: ['m1'] }]);
 
       await executor.close();
+    });
+  });
+
+  // ── Enriched provider info in agents_discover (Requirements 7.1–7.5) ──
+
+  describe('Unit: enriched provider info in agents_discover', () => {
+    it('should include kind and capabilities for providers that declare them', async () => {
+      const caps: ProviderCapabilities = { streaming: true, tools: true, vision: true, jsonMode: true };
+      const provider = createEnrichedProvider('openai', ['gpt-4o'], {
+        kind: 'llm',
+        capabilities: caps,
+        displayName: 'OpenAI',
+        description: 'OpenAI GPT models via official SDK',
+      });
+      const registry = createRegistry(provider);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'openai',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        expect(parsed.agents).toHaveLength(1);
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers).toHaveLength(1);
+        expect(providers[0]!.kind).toBe('llm');
+        expect(providers[0]!.capabilities).toEqual(caps);
+        expect(providers[0]!.displayName).toBe('OpenAI');
+        expect(providers[0]!.description).toBe('OpenAI GPT models via official SDK');
+      } finally {
+        await executor.close();
+      }
+    });
+
+    it('should omit kind when provider does not declare it (default behavior)', async () => {
+      // Provider without kind — ProviderRegistry.list() omits the field
+      const provider = createMockProvider('custom', ['custom-model']);
+      const registry = createRegistry(provider);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'custom',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers).toHaveLength(1);
+        expect(providers[0]!.id).toBe('custom');
+        expect(providers[0]).not.toHaveProperty('kind');
+      } finally {
+        await executor.close();
+      }
+    });
+
+    it('should omit capabilities when provider does not declare them', async () => {
+      // Provider without capabilities — ProviderRegistry.list() omits the field
+      const provider = createMockProvider('bare', ['model-a']);
+      const registry = createRegistry(provider);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'bare',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers).toHaveLength(1);
+        expect(providers[0]).not.toHaveProperty('capabilities');
+        expect(providers[0]).not.toHaveProperty('kind');
+        expect(providers[0]).not.toHaveProperty('displayName');
+        expect(providers[0]).not.toHaveProperty('description');
+      } finally {
+        await executor.close();
+      }
+    });
+
+    it('should omit capabilities when provider declares empty capabilities object', async () => {
+      const provider = createEnrichedProvider('test', ['m1'], {
+        kind: 'llm',
+        capabilities: {},
+      });
+      const registry = createRegistry(provider);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'test',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers[0]!.kind).toBe('llm');
+        expect(providers[0]).not.toHaveProperty('capabilities');
+      } finally {
+        await executor.close();
+      }
+    });
+
+    it('should mix enriched and bare providers in the same agent', async () => {
+      const enriched = createEnrichedProvider('openai', ['gpt-4o'], {
+        kind: 'llm',
+        capabilities: { streaming: true, tools: true, vision: true, jsonMode: true },
+        displayName: 'OpenAI',
+        description: 'OpenAI GPT models',
+      });
+      const bare = createMockProvider('custom', ['custom-model']);
+      const registry = createRegistry(enriched, bare);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'openai',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers).toHaveLength(2);
+
+        const openaiInfo = providers.find((p) => p.id === 'openai')!;
+        expect(openaiInfo.kind).toBe('llm');
+        expect(openaiInfo.capabilities).toEqual({ streaming: true, tools: true, vision: true, jsonMode: true });
+        expect(openaiInfo.displayName).toBe('OpenAI');
+        expect(openaiInfo.description).toBe('OpenAI GPT models');
+
+        const customInfo = providers.find((p) => p.id === 'custom')!;
+        expect(customInfo.id).toBe('custom');
+        expect(customInfo.models).toEqual(['custom-model']);
+        expect(customInfo).not.toHaveProperty('kind');
+        expect(customInfo).not.toHaveProperty('capabilities');
+        expect(customInfo).not.toHaveProperty('displayName');
+        expect(customInfo).not.toHaveProperty('description');
+      } finally {
+        await executor.close();
+      }
+    });
+
+    it('should include displayName and description when provider declares them', async () => {
+      const provider = createEnrichedProvider('anthropic', ['claude-sonnet-4-20250514'], {
+        displayName: 'Anthropic',
+        description: 'Claude models via official SDK',
+      });
+      const registry = createRegistry(provider);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'anthropic',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers[0]!.displayName).toBe('Anthropic');
+        expect(providers[0]!.description).toBe('Claude models via official SDK');
+      } finally {
+        await executor.close();
+      }
+    });
+
+    it('should omit description when provider declares empty string', async () => {
+      const provider = createEnrichedProvider('test', ['m1'], {
+        displayName: 'Test',
+        description: '',
+      });
+      const registry = createRegistry(provider);
+
+      const agent = new MultiProviderCompanionAgent({
+        id: 'multi-agent',
+        defaultProviderId: 'test',
+        registry,
+        capabilities: ['chat'],
+      });
+
+      const executor = new InProcessExecutor({ silent: true });
+      executor.register(agent);
+      await executor.start();
+
+      try {
+        const result = await handleCombinedDiscover(executor, undefined, {});
+        const parsed = JSON.parse(result.content[0]!.text) as { agents: AgentInfo[] };
+
+        const providers = parsed.agents[0]!.providers!;
+        expect(providers[0]!.displayName).toBe('Test');
+        expect(providers[0]).not.toHaveProperty('description');
+      } finally {
+        await executor.close();
+      }
     });
   });
 });

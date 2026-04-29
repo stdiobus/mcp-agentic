@@ -20,6 +20,8 @@ export type {
   AIProviderResult,
   ChatMessage,
   ProviderConfig,
+  ProviderCapabilities,
+  ProviderKind,
   RuntimeParams,
 } from './AIProvider.js';
 
@@ -40,3 +42,24 @@ export { mapParameters } from './ParameterMapper.js';
 export { OpenAIProvider, getMaxTokensParamName } from './providers/OpenAIProvider.js';
 export { AnthropicProvider } from './providers/AnthropicProvider.js';
 export { GoogleGeminiProvider } from './providers/GoogleGeminiProvider.js';
+
+// ── defineProvider contract ─────────────────────────────────────
+
+export { defineProvider } from './defineProvider.js';
+export type { DefinedProvider, DefineProviderConfig } from './defineProvider.js';
+
+// ── Built-in provider factories ─────────────────────────────────
+
+export { openAI } from './factories/openai.js';
+export type { OpenAIOptions } from './factories/openai.js';
+
+export { anthropic } from './factories/anthropic.js';
+export type { AnthropicOptions } from './factories/anthropic.js';
+
+export { gemini } from './factories/gemini.js';
+export type { GeminiOptions } from './factories/gemini.js';
+
+// ── Multi-provider agent helper ─────────────────────────────────
+
+export { createMultiProviderAgent } from './factories/createMultiProviderAgent.js';
+export type { CreateMultiProviderAgentConfig } from './factories/createMultiProviderAgent.js';

@@ -872,4 +872,29 @@ describe('AnthropicProvider', () => {
       );
     });
   });
+
+  // ── Kind and capabilities ─────────────────────────────────────
+
+  describe('kind and capabilities', () => {
+    it('should have kind set to "llm"', () => {
+      const provider = createProvider();
+      expect(provider.kind).toBe('llm');
+    });
+
+    it('should have correct capabilities', () => {
+      const provider = createProvider();
+      expect(provider.capabilities).toEqual({
+        streaming: true,
+        tools: true,
+        vision: true,
+        jsonMode: false,
+      });
+    });
+
+    it('should have readonly kind and capabilities', () => {
+      const provider = createProvider();
+      expect(typeof provider.kind).toBe('string');
+      expect(typeof provider.capabilities).toBe('object');
+    });
+  });
 });

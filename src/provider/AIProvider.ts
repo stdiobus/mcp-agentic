@@ -105,6 +105,23 @@ export interface ProviderConfig {
   defaults?: RuntimeParams;
 }
 
+// ── Provider metadata types ─────────────────────────────────────
+
+/** Type of provider for filtering and discovery. */
+export type ProviderKind = 'llm' | 'embedding' | 'reranker';
+
+/** Self-reported provider capabilities. */
+export interface ProviderCapabilities {
+  /** Whether the provider supports streaming responses. */
+  streaming?: boolean;
+  /** Whether the provider supports tool/function calling. */
+  tools?: boolean;
+  /** Whether the provider supports vision/image inputs. */
+  vision?: boolean;
+  /** Whether the provider supports structured JSON output mode. */
+  jsonMode?: boolean;
+}
+
 // ── AIProvider interface ────────────────────────────────────────
 
 /**
@@ -119,6 +136,12 @@ export interface AIProvider {
   readonly id: string;
   /** List of model identifiers supported by this provider. */
   readonly models: readonly string[];
+
+  /** Type of provider. Defaults to `'llm'` when not specified. */
+  readonly kind?: ProviderKind;
+
+  /** Self-reported capabilities of this provider. */
+  readonly capabilities?: ProviderCapabilities;
 
   /**
    * Send a completion request to the AI service.

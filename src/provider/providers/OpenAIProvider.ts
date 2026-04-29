@@ -19,6 +19,8 @@ import type {
   AIProviderResult,
   ChatMessage,
   ProviderConfig,
+  ProviderCapabilities,
+  ProviderKind,
   RuntimeParams,
 } from '../AIProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
@@ -158,10 +160,23 @@ interface OpenAIChatCompletion {
  * Requires `openai` package to be installed as a peer dependency.
  * Credentials are passed via {@link ProviderConfig.credentials} — the
  * provider never accesses `process.env` directly after construction.
+ *
+ * @deprecated Use the `openAI()` factory from `@stdiobus/mcp-agentic` instead.
+ * ```ts
+ * import { openAI } from '@stdiobus/mcp-agentic';
+ * const provider = openAI({ apiKey: '...', models: ['gpt-4o'] });
+ * ```
  */
 export class OpenAIProvider implements AIProvider {
   readonly id = 'openai';
   readonly models: readonly string[];
+  readonly kind: ProviderKind = 'llm';
+  readonly capabilities: ProviderCapabilities = {
+    streaming: true,
+    tools: true,
+    vision: true,
+    jsonMode: true,
+  };
 
   private readonly client: OpenAIClient;
   private readonly defaults: RuntimeParams;
@@ -201,6 +216,7 @@ export class OpenAIProvider implements AIProvider {
   /**
    * Factory method that dynamically imports the OpenAI SDK.
    *
+   * @deprecated Use the `openAI()` factory instead. Factories are synchronous.
    * @param config - Provider configuration.
    * @returns Promise resolving to a configured OpenAIProvider instance.
    * @throws {BridgeError} CONFIG if credentials are missing or SDK is not installed.

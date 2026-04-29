@@ -19,6 +19,8 @@ import type {
   AIProviderResult,
   ChatMessage,
   ProviderConfig,
+  ProviderCapabilities,
+  ProviderKind,
   RuntimeParams,
 } from '../AIProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
@@ -118,10 +120,23 @@ interface GoogleGenerativeAIClient {
  * Requires `@google/generative-ai` package to be installed as a peer dependency.
  * Credentials are passed via {@link ProviderConfig.credentials} — the
  * provider never accesses `process.env` directly after construction.
+ *
+ * @deprecated Use the `gemini()` factory from `@stdiobus/mcp-agentic` instead.
+ * ```ts
+ * import { gemini } from '@stdiobus/mcp-agentic';
+ * const provider = gemini({ apiKey: '...', models: ['gemini-2.0-flash'] });
+ * ```
  */
 export class GoogleGeminiProvider implements AIProvider {
   readonly id = 'google-gemini';
   readonly models: readonly string[];
+  readonly kind: ProviderKind = 'llm';
+  readonly capabilities: ProviderCapabilities = {
+    streaming: false,
+    tools: false,
+    vision: true,
+    jsonMode: true,
+  };
 
   private readonly client: GoogleGenerativeAIClient;
   private readonly defaults: RuntimeParams;
@@ -158,6 +173,7 @@ export class GoogleGeminiProvider implements AIProvider {
   /**
    * Factory method that dynamically imports the Google Gemini SDK.
    *
+   * @deprecated Use the `gemini()` factory instead. Factories are synchronous.
    * @param config - Provider configuration.
    * @returns Promise resolving to a configured GoogleGeminiProvider instance.
    * @throws {BridgeError} CONFIG if credentials are missing or SDK is not installed.

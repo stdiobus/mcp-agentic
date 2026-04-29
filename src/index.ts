@@ -72,3 +72,22 @@ export { GoogleGeminiProvider } from './provider/index.js';
 
 export { MultiProviderCompanionAgent } from './agent/MultiProviderCompanionAgent.js';
 export type { MultiProviderCompanionConfig } from './agent/MultiProviderCompanionAgent.js';
+
+// ─── Provider Factory API (NEW) ──────────────────────────────────
+
+export { defineProvider } from './provider/index.js';
+export type { DefinedProvider, DefineProviderConfig } from './provider/index.js';
+
+export type { ProviderKind, ProviderCapabilities } from './provider/index.js';
+
+export { openAI } from './provider/index.js';
+export type { OpenAIOptions } from './provider/index.js';
+
+export { anthropic } from './provider/index.js';
+export type { AnthropicOptions } from './provider/index.js';
+
+export { gemini } from './provider/index.js';
+export type { GeminiOptions } from './provider/index.js';
+
+export { createMultiProviderAgent } from './provider/index.js';
+export type { CreateMultiProviderAgentConfig } from './provider/index.js';

@@ -19,6 +19,8 @@ import type {
   AIProviderResult,
   ChatMessage,
   ProviderConfig,
+  ProviderCapabilities,
+  ProviderKind,
   RuntimeParams,
 } from '../AIProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
@@ -96,10 +98,23 @@ interface AnthropicClient {
  * Requires `@anthropic-ai/sdk` package to be installed as a peer dependency.
  * Credentials are passed via {@link ProviderConfig.credentials} — the
  * provider never accesses `process.env` directly after construction.
+ *
+ * @deprecated Use the `anthropic()` factory from `@stdiobus/mcp-agentic` instead.
+ * ```ts
+ * import { anthropic } from '@stdiobus/mcp-agentic';
+ * const provider = anthropic({ apiKey: '...', models: ['claude-sonnet-4-20250514'] });
+ * ```
  */
 export class AnthropicProvider implements AIProvider {
   readonly id = 'anthropic';
   readonly models: readonly string[];
+  readonly kind: ProviderKind = 'llm';
+  readonly capabilities: ProviderCapabilities = {
+    streaming: true,
+    tools: true,
+    vision: true,
+    jsonMode: false,
+  };
 
   private readonly client: AnthropicClient;
   private readonly defaults: RuntimeParams;
@@ -136,6 +151,7 @@ export class AnthropicProvider implements AIProvider {
   /**
    * Factory method that dynamically imports the Anthropic SDK.
    *
+   * @deprecated Use the `anthropic()` factory instead. Factories are synchronous.
    * @param config - Provider configuration.
    * @returns Promise resolving to a configured AnthropicProvider instance.
    * @throws {BridgeError} CONFIG if credentials are missing or SDK is not installed.

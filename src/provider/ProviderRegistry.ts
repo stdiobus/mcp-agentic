@@ -15,7 +15,7 @@
  */
 
 import { BridgeError } from '../errors/BridgeError.js';
-import type { AIProvider } from './AIProvider.js';
+import type { AIProvider, ProviderKind, ProviderCapabilities } from './AIProvider.js';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -25,6 +25,14 @@ export interface ProviderInfo {
   id: string;
   /** Model identifiers supported by this provider. */
   models: readonly string[];
+  /** Type of provider (e.g., `'llm'`, `'embedding'`, `'reranker'`). Present only when the provider declares it. */
+  kind?: ProviderKind;
+  /** Self-reported capabilities. Present only when the provider declares non-empty capabilities. */
+  capabilities?: ProviderCapabilities;
+  /** Human-readable display name. Present only when the provider declares it. */
+  displayName?: string;
+  /** Human-readable description. Present only when the provider declares a non-empty value. */
+  description?: string;
 }
 
 // ── ProviderRegistry ────────────────────────────────────────────
@@ -81,14 +89,44 @@ export class ProviderRegistry {
   }
 
   /**
-   * List all registered providers with their id and supported models.
+   * List all registered providers with their id, supported models,
+   * and optional enriched metadata (kind, capabilities, displayName, description).
+   *
+   * Enriched fields are included only when the provider declares them
+   * (non-undefined, non-empty). Providers without these fields return
+   * a ProviderInfo with only `id` and `models`.
    *
    * @returns Array of {@link ProviderInfo} for each registered provider.
    */
   list(): ProviderInfo[] {
     const result: ProviderInfo[] = [];
     for (const provider of this.providers.values()) {
-      result.push({ id: provider.id, models: provider.models });
+      const info: ProviderInfo = { id: provider.id, models: provider.models };
+
+      // Read enriched fields; include only when defined and non-empty.
+      // kind and capabilities are declared on AIProvider (optional).
+      if (provider.kind !== undefined) {
+        info.kind = provider.kind;
+      }
+
+      if (provider.capabilities !== undefined && Object.keys(provider.capabilities).length > 0) {
+        info.capabilities = provider.capabilities;
+      }
+
+      // displayName and description are not on AIProvider — read via duck-typing.
+      const providerAny = provider as unknown as Record<string, unknown>;
+
+      const displayName = providerAny.displayName;
+      if (typeof displayName === 'string') {
+        info.displayName = displayName;
+      }
+
+      const description = providerAny.description;
+      if (typeof description === 'string' && description !== '') {
+        info.description = description;
+      }
+
+      result.push(info);
     }
     return result;
   }

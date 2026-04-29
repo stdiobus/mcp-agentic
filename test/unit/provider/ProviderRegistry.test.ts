@@ -20,7 +20,7 @@ import { describe, it, expect } from '@jest/globals';
 import * as fc from 'fast-check';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
 import { BridgeError } from '../../../src/errors/BridgeError.js';
-import type { AIProvider, ChatMessage, RuntimeParams, AIProviderResult } from '../../../src/provider/AIProvider.js';
+import type { AIProvider, ChatMessage, RuntimeParams, AIProviderResult, ProviderKind, ProviderCapabilities } from '../../../src/provider/AIProvider.js';
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -289,6 +289,149 @@ describe('ProviderRegistry', () => {
       } catch (err) {
         expect((err as BridgeError).type).toBe('UPSTREAM');
         expect((err as BridgeError).message).toContain('google-gemini');
+      }
+    });
+  });
+
+  // ── Enriched ProviderInfo in list() ─────────────────────────────
+
+  describe('Enriched ProviderInfo in list()', () => {
+    /** Create a mock provider with enriched metadata fields. */
+    function createEnrichedProvider(
+      id: string,
+      models: string[],
+      extra: {
+        kind?: ProviderKind;
+        capabilities?: ProviderCapabilities;
+        displayName?: string;
+        description?: string;
+      } = {},
+    ): AIProvider & Record<string, unknown> {
+      return {
+        id,
+        models: Object.freeze(models),
+        ...(extra.kind !== undefined ? { kind: extra.kind } : {}),
+        ...(extra.capabilities !== undefined ? { capabilities: extra.capabilities } : {}),
+        ...(extra.displayName !== undefined ? { displayName: extra.displayName } : {}),
+        ...(extra.description !== undefined ? { description: extra.description } : {}),
+        async complete(
+          _messages: ChatMessage[],
+          _params: RuntimeParams,
+          _signal?: AbortSignal,
+        ): Promise<AIProviderResult> {
+          return { text: 'mock', stopReason: 'end_turn' };
+        },
+      };
+    }
+
+    it('should include kind and capabilities when provider declares them', () => {
+      const registry = new ProviderRegistry();
+      const caps: ProviderCapabilities = { streaming: true, tools: true, vision: false, jsonMode: true };
+      registry.register(createEnrichedProvider('openai', ['gpt-4o'], {
+        kind: 'llm',
+        capabilities: caps,
+      }));
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.kind).toBe('llm');
+      expect(listed[0]!.capabilities).toEqual(caps);
+    });
+
+    it('should omit kind and capabilities when provider does not declare them', () => {
+      const registry = new ProviderRegistry();
+      registry.register(createMockProvider('bare-provider', ['model-a']));
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.id).toBe('bare-provider');
+      expect(listed[0]!.models).toEqual(['model-a']);
+      expect(listed[0]).not.toHaveProperty('kind');
+      expect(listed[0]).not.toHaveProperty('capabilities');
+      expect(listed[0]).not.toHaveProperty('displayName');
+      expect(listed[0]).not.toHaveProperty('description');
+    });
+
+    it('should include displayName and description when provider declares them', () => {
+      const registry = new ProviderRegistry();
+      registry.register(createEnrichedProvider('anthropic', ['claude-sonnet-4-20250514'], {
+        displayName: 'Anthropic',
+        description: 'Claude models via official SDK',
+      }));
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.displayName).toBe('Anthropic');
+      expect(listed[0]!.description).toBe('Claude models via official SDK');
+    });
+
+    it('should omit description when provider declares an empty string', () => {
+      const registry = new ProviderRegistry();
+      registry.register(createEnrichedProvider('test', ['m1'], {
+        displayName: 'Test',
+        description: '',
+      }));
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.displayName).toBe('Test');
+      expect(listed[0]).not.toHaveProperty('description');
+    });
+
+    it('should omit capabilities when provider declares an empty capabilities object', () => {
+      const registry = new ProviderRegistry();
+      registry.register(createEnrichedProvider('test', ['m1'], {
+        kind: 'llm',
+        capabilities: {},
+      }));
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]!.kind).toBe('llm');
+      expect(listed[0]).not.toHaveProperty('capabilities');
+    });
+
+    it('should mix enriched and bare providers correctly', () => {
+      const registry = new ProviderRegistry();
+      registry.register(createEnrichedProvider('openai', ['gpt-4o'], {
+        kind: 'llm',
+        capabilities: { streaming: true, tools: true, vision: true, jsonMode: true },
+        displayName: 'OpenAI',
+        description: 'OpenAI GPT models',
+      }));
+      registry.register(createMockProvider('custom', ['custom-model']));
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(2);
+
+      const enriched = listed.find((p) => p.id === 'openai')!;
+      expect(enriched.kind).toBe('llm');
+      expect(enriched.capabilities).toEqual({ streaming: true, tools: true, vision: true, jsonMode: true });
+      expect(enriched.displayName).toBe('OpenAI');
+      expect(enriched.description).toBe('OpenAI GPT models');
+
+      const bare = listed.find((p) => p.id === 'custom')!;
+      expect(bare.id).toBe('custom');
+      expect(bare.models).toEqual(['custom-model']);
+      expect(bare).not.toHaveProperty('kind');
+      expect(bare).not.toHaveProperty('capabilities');
+      expect(bare).not.toHaveProperty('displayName');
+      expect(bare).not.toHaveProperty('description');
+    });
+
+    it('should include all ProviderKind values correctly', () => {
+      const registry = new ProviderRegistry();
+      const kinds: ProviderKind[] = ['llm', 'embedding', 'reranker'];
+      for (const kind of kinds) {
+        registry.register(createEnrichedProvider(`provider-${kind}`, ['m1'], { kind }));
+      }
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(3);
+      for (const kind of kinds) {
+        const entry = listed.find((p) => p.id === `provider-${kind}`);
+        expect(entry).toBeDefined();
+        expect(entry!.kind).toBe(kind);
       }
     });
   });
