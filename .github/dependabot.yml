@@ -22,7 +22,8 @@ updates:
       - dependencies
       - automated
     commit-message:
-      prefix: "deps"
+      prefix: "chore"
+      prefix-development: "chore"
       include: scope
     groups:
       # Group minor and patch updates for dev dependencies
