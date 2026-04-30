@@ -9,7 +9,7 @@
  *
  * Owns the MCP server, tool registration, and executor lifecycle.
  * Users create an instance, register agents (in-process or workers),
- * and call `startStdio()` to begin serving MCP tool calls.
+ * and call `start()` to begin serving MCP tool calls.
  *
  * Tool logic lives in `src/mcp/tools/*.ts`. This class only:
  *   1. Resolves the correct executor for each request
@@ -21,7 +21,7 @@
  *   .register(myAgent)
  *   .registerWorker({ id: 'py-agent', command: 'python', args: ['agent.py'] });
  *
- * await server.startStdio();
+ * await server.start();
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -30,6 +30,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { AgentHandler, Agent } from '../agent/AgentHandler.js';
 import type { AgentExecutor } from '../executor/AgentExecutor.js';
 import type { WorkerConfig } from '../executor/types.js';
+import type { RuntimeParams } from '../provider/AIProvider.js';
 import { InProcessExecutor } from '../executor/InProcessExecutor.js';
 import { WorkerExecutor } from '../executor/WorkerExecutor.js';
 import { BridgeError } from '../errors/BridgeError.js';
@@ -174,10 +175,14 @@ export class McpAgenticServer {
   /**
    * Start executors and connect the MCP server via stdio transport.
    *
+   * Currently uses stdio as the default transport. In the future, `start()`
+   * may accept options such as `{ transport: 'http' }` or support
+   * `addTransport()` + `start()` for multi-transport scenarios.
+   *
    * @returns Promise that resolves when the server is ready to accept tool calls.
    * @throws {BridgeError} TRANSPORT if StdioBus fails to start.
    */
-  async startStdio(): Promise<void> {
+  async start(): Promise<void> {
     await this.inProcess.start();
 
     if (this.worker) {
@@ -190,6 +195,15 @@ export class McpAgenticServer {
 
     const transport = new StdioServerTransport();
     await this.mcpServer.connect(transport);
+  }
+
+  /**
+   * @deprecated Use {@link start} instead. Will be removed in a future major version.
+   *
+   * Start executors and connect the MCP server via stdio transport.
+   */
+  async startStdio(): Promise<void> {
+    return this.start();
   }
 
   /**
@@ -367,6 +381,63 @@ export class McpAgenticServer {
     }
   }
 
+  // ── RuntimeParams injection ──────────────────────────────────────
+
+  /**
+   * Inject prompt-level RuntimeParams into an agent via duck-typing.
+   *
+   * If the executor is an InProcessExecutor, retrieves the agent by ID
+   * and calls `setPromptRuntimeParams()` if the method exists (duck-typing check).
+   * This allows MultiProviderCompanionAgent to receive per-prompt overrides
+   * without modifying the AgentHandler interface.
+   *
+   * @param executor - The executor that owns the session.
+   * @param sessionId - Session to inject params for.
+   * @param runtimeParams - RuntimeParams to set, or undefined to skip injection.
+   */
+  private async injectPromptRuntimeParams(
+    executor: AgentExecutor,
+    sessionId: string,
+    runtimeParams: RuntimeParams | undefined,
+  ): Promise<void> {
+    if (!runtimeParams) {
+      return;
+    }
+
+    if (!(executor instanceof InProcessExecutor)) {
+      return;
+    }
+
+    // Get the session to find the agent ID
+    const session = await executor.getSession(sessionId);
+    this.applyRuntimeParamsToAgent(executor, sessionId, session.agentId, runtimeParams);
+  }
+
+  /**
+   * Apply runtimeParams to an agent when the agentId is already known.
+   * Synchronous variant used by tasks_delegate where agentId comes from the hook.
+   */
+  private applyRuntimeParamsToAgent(
+    executor: AgentExecutor,
+    sessionId: string,
+    agentId: string,
+    runtimeParams: RuntimeParams,
+  ): void {
+    if (!(executor instanceof InProcessExecutor)) {
+      return;
+    }
+
+    const agent = executor.getAgent(agentId);
+    if (!agent) {
+      return;
+    }
+
+    // Duck-typing: check if agent has setPromptRuntimeParams method
+    if (typeof (agent as any).setPromptRuntimeParams === 'function') {
+      (agent as any).setPromptRuntimeParams(sessionId, runtimeParams);
+    }
+  }
+
   // ── Tool registration ─────────────────────────────────────────
   //
   // Each tool: resolve executor → call handler → return result.
@@ -400,6 +471,7 @@ export class McpAgenticServer {
     }, async (args) => this.withBackpressure(async () => {
       this.validatePromptSize(args.prompt);
       const executor = await this.resolveExecutorForSession(args.sessionId);
+      await this.injectPromptRuntimeParams(executor, args.sessionId, args.runtimeParams as RuntimeParams | undefined);
       return handleSessionsPrompt(executor, args);
     }));
 
@@ -434,7 +506,14 @@ export class McpAgenticServer {
       this.validatePromptSize(args.prompt);
       this.validateMetadataSize(args.metadata as Record<string, unknown> | undefined);
       const executor = await this.resolveExecutor(args.agentId);
-      return handleTasksDelegate(executor, args as TasksDelegateInput);
+      const runtimeParams = args.runtimeParams as RuntimeParams | undefined;
+      return handleTasksDelegate(executor, args as TasksDelegateInput, {
+        beforePrompt: runtimeParams
+          ? (sessionId: string, agentId: string) => {
+            this.applyRuntimeParamsToAgent(executor, sessionId, agentId, runtimeParams);
+          }
+          : undefined,
+      });
     }));
   }
 }

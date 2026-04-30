@@ -121,7 +121,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 try {
-  await server.startStdio();
+  await server.start();
   process.stderr.write('[codex-acp-server] Started on stdio\n');
 } catch (error) {
   process.stderr.write(`[codex-acp-server] Failed: ${error instanceof Error ? error.message : String(error)}\n`);

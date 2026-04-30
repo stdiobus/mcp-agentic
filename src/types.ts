@@ -44,6 +44,41 @@ export const LoggingConfigSchema = z.object({
 export type LoggingConfig = z.infer<typeof LoggingConfigSchema>;
 
 // ============================================================================
+// RuntimeParams Schema
+// ============================================================================
+
+/**
+ * Zod schema for AI provider runtime parameters.
+ *
+ * Used by `sessions_prompt` and `tasks_delegate` tools to allow MCP clients
+ * to dynamically override provider behavior at request time.
+ *
+ * Uses `.strict()` to reject unknown fields — clients must use `providerSpecific`
+ * for provider-native parameters not covered by common fields.
+ */
+export const RuntimeParamsSchema = z.object({
+  /** Model identifier to use for this request. */
+  model: z.string().optional(),
+  /** Sampling temperature (0–2). Higher values increase randomness. */
+  temperature: z.number().min(0).max(2).optional(),
+  /** Maximum number of tokens to generate. Must be a positive integer. */
+  maxTokens: z.number().int().positive().optional(),
+  /** Nucleus sampling probability (0–1). */
+  topP: z.number().min(0).max(1).optional(),
+  /** Top-K sampling parameter. Must be a positive integer. */
+  topK: z.number().int().positive().optional(),
+  /** Sequences that cause the model to stop generating. */
+  stopSequences: z.array(z.string()).optional(),
+  /** System prompt override for this request. */
+  systemPrompt: z.string().optional(),
+  /** Provider-specific parameters passed through to the native SDK. */
+  providerSpecific: z.record(z.unknown()).optional(),
+}).strict();
+
+/** Inferred TypeScript type for {@link RuntimeParamsSchema}. */
+export type RuntimeParamsInput = z.infer<typeof RuntimeParamsSchema>;
+
+// ============================================================================
 // MCP Tool Argument Schemas
 // ============================================================================
 
@@ -76,6 +111,8 @@ export const SessionsPromptArgsSchema = z.object({
   prompt: z.string(),
   /** Request timeout in milliseconds. Must be a positive integer. */
   timeout: z.number().int().positive().optional(),
+  /** Optional runtime parameters to override provider defaults for this prompt. */
+  runtimeParams: RuntimeParamsSchema.optional(),
 });
 
 /** Zod schema for `sessions_status` tool arguments. */
@@ -110,4 +147,6 @@ export const TasksDelegateArgsSchema = z.object({
   timeout: z.number().int().positive().optional(),
   /** Caller-supplied metadata attached to the session. */
   metadata: z.record(z.unknown()).optional(),
+  /** Optional runtime parameters to override provider defaults for this delegation. */
+  runtimeParams: RuntimeParamsSchema.optional(),
 });

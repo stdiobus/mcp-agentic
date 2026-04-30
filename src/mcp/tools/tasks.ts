@@ -24,7 +24,20 @@ export type TasksDelegateInput = {
   agentId?: string | undefined;
   timeout?: number | undefined;
   metadata?: Record<string, unknown> | undefined;
+  runtimeParams?: Record<string, unknown> | undefined;
 };
+
+/** Optional hooks for tasks_delegate lifecycle. */
+export interface TasksDelegateHooks {
+  /**
+   * Called after session creation but before the prompt is sent.
+   * Used by McpAgenticServer to inject prompt-level runtimeParams.
+   *
+   * @param sessionId - The newly created session ID.
+   * @param agentId - The agent ID that owns the session.
+   */
+  beforePrompt?: ((sessionId: string, agentId: string) => void | Promise<void>) | undefined;
+}
 
 /**
  * Handle `tasks_delegate` — one-shot delegation (create + prompt + close).
@@ -34,11 +47,13 @@ export type TasksDelegateInput = {
  *
  * @param executor - Executor to delegate to.
  * @param input - Validated tool input with `prompt`, optional `agentId`, `timeout`, and `metadata`.
+ * @param hooks - Optional lifecycle hooks for pre-prompt injection.
  * @returns MCP text content with the delegation result or an error payload.
  */
 export async function handleTasksDelegate(
   executor: AgentExecutor,
-  input: TasksDelegateInput
+  input: TasksDelegateInput,
+  hooks?: TasksDelegateHooks,
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   let sessionId: string | undefined;
 
@@ -48,6 +63,11 @@ export async function handleTasksDelegate(
     // Create session
     const session = await executor.createSession(input.agentId, input.metadata);
     sessionId = session.sessionId;
+
+    // Invoke pre-prompt hook (e.g., inject runtimeParams)
+    if (hooks?.beforePrompt) {
+      await hooks.beforePrompt(sessionId, session.agentId);
+    }
 
     // Send prompt
     const result = await executor.prompt(sessionId, input.prompt, {

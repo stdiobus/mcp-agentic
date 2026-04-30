@@ -22,7 +22,7 @@
  * };
  *
  * const server = new McpAgenticServer().register(agent);
- * await server.startStdio();
+ * await server.start();
  */
 
 // ─── Server ──────────────────────────────────────────────────────
@@ -47,3 +47,47 @@ export type {
 // ─── Worker configuration ────────────────────────────────────────
 
 export type { WorkerConfig } from './executor/types.js';
+
+// ─── Provider Layer ──────────────────────────────────────────────
+
+export type {
+  AIProvider,
+  AIProviderResult,
+  RuntimeParams,
+  ProviderConfig,
+  ChatMessage,
+} from './provider/index.js';
+
+export { mergeRuntimeParams, ProviderRegistry } from './provider/index.js';
+export type { ProviderInfo } from './provider/index.js';
+
+export type { ModelProfile, MappableParam } from './provider/index.js';
+export { mapParameters } from './provider/index.js';
+
+export { OpenAIProvider, getMaxTokensParamName } from './provider/index.js';
+export { AnthropicProvider } from './provider/index.js';
+export { GoogleGeminiProvider } from './provider/index.js';
+
+// ─── Multi-Provider Agent ────────────────────────────────────────
+
+export { MultiProviderCompanionAgent } from './agent/MultiProviderCompanionAgent.js';
+export type { MultiProviderCompanionConfig } from './agent/MultiProviderCompanionAgent.js';
+
+// ─── Provider Factory API (NEW) ──────────────────────────────────
+
+export { defineProvider } from './provider/index.js';
+export type { DefinedProvider, DefineProviderConfig } from './provider/index.js';
+
+export type { ProviderKind, ProviderCapabilities } from './provider/index.js';
+
+export { openAI } from './provider/index.js';
+export type { OpenAIOptions } from './provider/index.js';
+
+export { anthropic } from './provider/index.js';
+export type { AnthropicOptions } from './provider/index.js';
+
+export { gemini } from './provider/index.js';
+export type { GeminiOptions } from './provider/index.js';
+
+export { createMultiProviderAgent } from './provider/index.js';
+export type { CreateMultiProviderAgentConfig } from './provider/index.js';

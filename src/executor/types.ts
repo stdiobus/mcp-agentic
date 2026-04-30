@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { ProviderKind, ProviderCapabilities } from '../provider/AIProvider.js';
+
 /** Metadata about a registered agent returned by {@link AgentExecutor.discover}. */
 export interface AgentInfo {
   /** Unique agent identifier. */
@@ -12,6 +14,21 @@ export interface AgentInfo {
   capabilities: string[];
   /** Current availability status. */
   status: 'ready' | 'busy' | 'unavailable';
+  /** AI providers available for this agent, present only when the agent supports multiple providers. */
+  providers?: Array<{
+    /** Unique provider identifier. */
+    id: string;
+    /** Model identifiers supported by this provider. */
+    models: readonly string[];
+    /** Type of provider (e.g., `'llm'`, `'embedding'`, `'reranker'`). Present only when the provider declares it. */
+    kind?: ProviderKind;
+    /** Self-reported capabilities. Present only when the provider declares non-empty capabilities. */
+    capabilities?: ProviderCapabilities;
+    /** Human-readable display name. Present only when the provider declares it. */
+    displayName?: string;
+    /** Human-readable description. Present only when the provider declares a non-empty value. */
+    description?: string;
+  }>;
 }
 
 /** Snapshot of a session's state returned by session management methods. */

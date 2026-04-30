@@ -14,7 +14,7 @@
  * agents to handle work.
  *
  * To actually delegate work to agents, create your own entry point that
- * calls `server.register(agent)` before `server.startStdio()`.
+ * calls `server.register(agent)` before `server.start()`.
  * See README.md for examples.
  *
  * Usage (diagnostics only):
@@ -39,7 +39,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 try {
-  await server.startStdio();
+  await server.start();
 
   // Warn on stderr that this reference server has no agents.
   // stdout is the MCP wire — never write non-protocol data there.
