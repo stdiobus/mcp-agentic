@@ -8,7 +8,7 @@
  * createMultiProviderAgent — Sugar-helper for creating a multi-provider agent.
  *
  * Creates a {@link ProviderRegistry}, registers all providers, validates
- * the configuration, and returns a ready-to-use {@link MultiProviderCompanionAgent}.
+ * the configuration, and returns a ready-to-use {@link MultiProviderAgent}.
  *
  * @module provider/factories/createMultiProviderAgent
  */
@@ -16,7 +16,7 @@
 import { BridgeError } from '../../errors/BridgeError.js';
 import type { AIProvider, RuntimeParams } from '../AIProvider.js';
 import { ProviderRegistry } from '../ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from '../../agent/MultiProviderAgent.js';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -41,19 +41,19 @@ export interface CreateMultiProviderAgentConfig {
 // ── Implementation ──────────────────────────────────────────────
 
 /**
- * Create a {@link MultiProviderCompanionAgent} from an array of providers.
+ * Create a {@link MultiProviderAgent} from an array of providers.
  *
  * Internally creates a {@link ProviderRegistry}, registers all providers,
  * and returns a ready-to-use agent instance.
  *
  * @param config - Agent configuration.
- * @returns A configured MultiProviderCompanionAgent.
+ * @returns A configured MultiProviderAgent.
  * @throws {BridgeError} CONFIG if `providers` is empty, contains duplicate ids,
  *   or `defaultProviderId` does not match any provider.
  */
 export function createMultiProviderAgent(
   config: CreateMultiProviderAgentConfig,
-): MultiProviderCompanionAgent {
+): MultiProviderAgent {
   const { id, providers, defaultProviderId, capabilities, systemPrompt, defaults } = config;
 
   // 1. Validate: providers non-empty
@@ -89,7 +89,7 @@ export function createMultiProviderAgent(
   }
 
   // 5. Create and return agent
-  return new MultiProviderCompanionAgent({
+  return new MultiProviderAgent({
     id,
     defaultProviderId,
     registry,

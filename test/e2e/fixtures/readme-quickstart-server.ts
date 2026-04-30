@@ -19,7 +19,7 @@ const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
   .register({
     id: 'my-agent',
     capabilities: ['code-analysis'],
-    async prompt(sessionId, input) {
+    async prompt(_sessionId, input) {
       return { text: `Analyzed: ${input}`, stopReason: 'end_turn' };
     },
   });

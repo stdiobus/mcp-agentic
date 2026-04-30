@@ -27,7 +27,7 @@ import { OpenAIProvider } from '../../../src/provider/providers/OpenAIProvider.j
 import { AnthropicProvider } from '../../../src/provider/providers/AnthropicProvider.js';
 import { GoogleGeminiProvider } from '../../../src/provider/providers/GoogleGeminiProvider.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from 'src/agent/MultiProviderAgent';
 
 // ── Skip if no API keys ─────────────────────────────────────────
 
@@ -89,7 +89,7 @@ async function testInvalidApiKey() {
       const registry = new ProviderRegistry();
       registry.register(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: `${name}-invalid-agent`,
         defaultProviderId: name,
         registry,
@@ -163,7 +163,7 @@ async function testNonexistentModel() {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const agent = new MultiProviderCompanionAgent({
+    const agent = new MultiProviderAgent({
       id: 'openai-bad-model-agent',
       defaultProviderId: 'openai',
       registry,
@@ -216,7 +216,7 @@ async function testNonexistentModel() {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const agent = new MultiProviderCompanionAgent({
+    const agent = new MultiProviderAgent({
       id: 'anthropic-bad-model-agent',
       defaultProviderId: 'anthropic',
       registry,
@@ -269,7 +269,7 @@ async function testNonexistentModel() {
     const registry = new ProviderRegistry();
     registry.register(provider);
 
-    const agent = new MultiProviderCompanionAgent({
+    const agent = new MultiProviderAgent({
       id: 'gemini-bad-model-agent',
       defaultProviderId: 'google-gemini',
       registry,
@@ -330,7 +330,7 @@ async function testAbortSignalCancellation() {
   const registry = new ProviderRegistry();
   registry.register(provider);
 
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: 'openai-cancel-agent',
     defaultProviderId: 'openai',
     registry,

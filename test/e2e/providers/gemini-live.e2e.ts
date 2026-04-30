@@ -7,7 +7,7 @@
 /**
  * E2E Test: Google Gemini Provider — Real API calls through full MCP Agentic pipeline.
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → Gemini SDK → Gemini API
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → Gemini SDK → Gemini API
  *
  * Requires: GOOGLE_AI_API_KEY environment variable.
  * Skipped automatically when the key is not set.
@@ -27,7 +27,7 @@ import {
 } from './_helpers.js';
 import { GoogleGeminiProvider } from '../../../src/provider/providers/GoogleGeminiProvider.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from 'src/agent/MultiProviderAgent';
 
 // ── Skip if no API key ──────────────────────────────────────────
 
@@ -45,7 +45,7 @@ async function setup() {
   const registry = new ProviderRegistry();
   registry.register(provider);
 
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: 'gemini-agent',
     defaultProviderId: 'google-gemini',
     registry,

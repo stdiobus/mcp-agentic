@@ -10,7 +10,7 @@
  * Uses the new Factory API (`openAI()`, `anthropic()`, `gemini()` + `createMultiProviderAgent()`)
  * instead of the class-based API with manual `ProviderRegistry` wiring.
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → [OpenAI | Anthropic | Gemini]
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → [OpenAI | Anthropic | Gemini]
  *
  * Requires: At least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY.
  * Skipped automatically when none are set.

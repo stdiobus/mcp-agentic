@@ -26,7 +26,7 @@ import { z } from 'zod';
 
 import type { AgentHandler, AgentResult } from '../../src/agent/AgentHandler.js';
 import type { AgentExecutor } from '../../src/executor/AgentExecutor.js';
-import type { AgentInfo, SessionEntry, HealthInfo } from '../../src/executor/types.js';
+import type { AgentInfo, HealthInfo, SessionEntry } from '../../src/executor/types.js';
 import { InProcessExecutor } from '../../src/executor/InProcessExecutor.js';
 import { handleCombinedDiscover } from '../../src/mcp/tools/agents.js';
 import { handleBridgeHealth } from '../../src/mcp/tools/health.js';
@@ -59,7 +59,7 @@ class EchoAgent implements AgentHandler {
   readonly id = 'echo-agent';
   readonly capabilities = ['echo'];
 
-  async prompt(sessionId: string, input: string): Promise<AgentResult> {
+  async prompt(_sessionId: string, input: string): Promise<AgentResult> {
     return { text: `Echo: ${input}`, stopReason: 'end_turn' };
   }
 }

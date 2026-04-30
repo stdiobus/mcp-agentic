@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { jest, describe, it, expect } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import * as fc from 'fast-check';
 import { handleBridgeHealth } from '../../../../src/mcp/tools/health.js';
 import { createMockExecutor } from './_mockExecutor.js';

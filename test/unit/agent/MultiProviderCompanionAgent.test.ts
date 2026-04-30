@@ -5,7 +5,7 @@
  */
 
 /**
- * Property-based and unit tests for MultiProviderCompanionAgent.
+ * Property-based and unit tests for MultiProviderAgent.
  *
  * Tests cover:
  * - Property 13: Provider selection (default vs session-level override)
@@ -15,9 +15,9 @@
  * Validates: Requirements 6.7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
  */
 
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import * as fc from 'fast-check';
-import { MultiProviderCompanionAgent } from '../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from '../../../src/agent/MultiProviderAgent.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
 import { BridgeError } from '../../../src/errors/BridgeError.js';
 import type { AIProvider, AIProviderResult, ChatMessage, RuntimeParams } from '../../../src/provider/AIProvider.js';
@@ -56,9 +56,9 @@ function createAgent(
   providers: AIProvider[],
   defaultProviderId: string,
   options?: { systemPrompt?: string; defaults?: RuntimeParams },
-): MultiProviderCompanionAgent {
+): MultiProviderAgent {
   const registry = createRegistry(...providers);
-  return new MultiProviderCompanionAgent({
+  return new MultiProviderAgent({
     id: 'test-agent',
     defaultProviderId,
     registry,
@@ -85,7 +85,7 @@ const arbSessionId = fc.stringMatching(/^[a-z0-9-]{1,20}$/);
 
 // ── Property 13: Provider selection ─────────────────────────────
 
-describe('MultiProviderCompanionAgent', () => {
+describe('MultiProviderAgent', () => {
   describe('Property 13: Provider selection', () => {
     // Feature: multi-provider-agents, Property 13: Provider selection
     it('property: uses default provider when no override is specified in session metadata', async () => {
@@ -105,7 +105,7 @@ describe('MultiProviderCompanionAgent', () => {
             expect(provider.complete).toHaveBeenCalledTimes(1);
             const [messages] = provider.complete.mock.calls[0]!;
             // Last message should be the user input
-            const lastMsg = messages[messages.length - 1] as ChatMessage;
+            const lastMsg = (messages as ChatMessage[])[(messages as ChatMessage[]).length - 1] as ChatMessage;
             return lastMsg.role === 'user' && lastMsg.content === input;
           },
         ),
@@ -125,7 +125,7 @@ describe('MultiProviderCompanionAgent', () => {
             const overrideProvider = createMockProvider(overrideId);
             const registry = createRegistry(defaultProvider, overrideProvider);
 
-            const agent = new MultiProviderCompanionAgent({
+            const agent = new MultiProviderAgent({
               id: 'test-agent',
               defaultProviderId: defaultId,
               registry,
@@ -317,7 +317,7 @@ describe('MultiProviderCompanionAgent', () => {
             const registry = createRegistry(provider);
 
             try {
-              new MultiProviderCompanionAgent({
+              new MultiProviderAgent({
                 id: 'test-agent',
                 defaultProviderId: unregisteredDefaultId,
                 registry,
@@ -357,14 +357,14 @@ describe('MultiProviderCompanionAgent', () => {
       const openai = createMockProvider('openai');
       const registry = createRegistry(openai);
 
-      expect(() => new MultiProviderCompanionAgent({
+      expect(() => new MultiProviderAgent({
         id: 'test-agent',
         defaultProviderId: 'nonexistent',
         registry,
       })).toThrow(BridgeError);
 
       try {
-        new MultiProviderCompanionAgent({
+        new MultiProviderAgent({
           id: 'test-agent',
           defaultProviderId: 'nonexistent',
           registry,
@@ -423,7 +423,7 @@ describe('MultiProviderCompanionAgent', () => {
     it('should return the registry instance', () => {
       const provider = createMockProvider('openai');
       const registry = createRegistry(provider);
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'test-agent',
         defaultProviderId: 'openai',
         registry,

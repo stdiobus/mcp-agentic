@@ -388,7 +388,7 @@ export class McpAgenticServer {
    *
    * If the executor is an InProcessExecutor, retrieves the agent by ID
    * and calls `setPromptRuntimeParams()` if the method exists (duck-typing check).
-   * This allows MultiProviderCompanionAgent to receive per-prompt overrides
+   * This allows MultiProviderAgent to receive per-prompt overrides
    * without modifying the AgentHandler interface.
    *
    * @param executor - The executor that owns the session.

@@ -10,7 +10,7 @@
  * Uses the new Factory API (`openAI()` + `createMultiProviderAgent()`) instead of
  * the class-based API (`OpenAIProvider.create()` + manual `ProviderRegistry` wiring).
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → OpenAI SDK → OpenAI API
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → OpenAI SDK → OpenAI API
  *
  * Requires: OPENAI_API_KEY environment variable.
  * Skipped automatically when the key is not set.

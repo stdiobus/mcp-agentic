@@ -10,7 +10,7 @@
  * Uses the new Factory API (`gemini()` + `createMultiProviderAgent()`) instead of
  * the class-based API (`GoogleGeminiProvider.create()` + manual `ProviderRegistry` wiring).
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → Gemini SDK → Gemini API
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → Gemini SDK → Gemini API
  *
  * Requires: GOOGLE_AI_API_KEY environment variable.
  * Skipped automatically when the key is not set.
