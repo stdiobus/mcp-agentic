@@ -9,7 +9,8 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=for-the-badge&logo=nodedotjs)](https://github.com/stdiobus/mcp-agentic)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge&logo=opensourceinitiative)](https://github.com/stdiobus/mcp-agentic/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-627%20passing-brightgreen?style=for-the-badge&logo=jest)](https://github.com/stdiobus/mcp-agentic)
+[![Tests](https://img.shields.io/badge/tests-668%20passing-brightgreen?style=for-the-badge&logo=jest)](https://github.com/stdiobus/mcp-agentic)
+[![E2E](https://img.shields.io/badge/e2e-86%20passing-brightgreen?style=for-the-badge&logo=playwright)](https://github.com/stdiobus/mcp-agentic)
 
 Agent orchestration server that connects MCP clients to ACP-compatible agents through [stdio Bus](https://stdiobus.com).
 
