@@ -825,3 +825,6 @@ _collegues
 
 
 sandbox/
+test/unit/examples
+examples/use-cases
+docs/mas-protocol
