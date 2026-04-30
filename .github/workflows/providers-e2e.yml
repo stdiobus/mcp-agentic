@@ -1,0 +1,58 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Provider E2E — Live integration tests against real AI provider APIs
+#
+# Runs on manual dispatch and optionally on release branches.
+# Requires API keys configured as repository secrets.
+# Tests skip gracefully when keys are absent.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Provider E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: 'Providers to test (all, openai, anthropic, gemini)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - openai
+          - anthropic
+          - gemini
+  # Also run before releases — triggered from release workflow if needed
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  provider-tests:
+    name: Provider E2E Tests
+    runs-on: ubuntu-latest
+    environment: provider-e2e
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run provider E2E tests
+        run: npm run test:e2e:providers
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        timeout-minutes: 10

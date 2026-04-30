@@ -1,0 +1,32 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CODEOWNERS — Defines required reviewers for code changes
+#
+# These owners are automatically requested for review on PRs that modify
+# files matching the patterns below. At least one approval from a code owner
+# is required before merging (when branch protection is enabled).
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Default owner for everything
+*                                   @stdiobus/core
+
+# Public API surface — requires explicit review
+src/index.ts                        @stdiobus/core
+src/types.ts                        @stdiobus/core
+src/server/McpAgenticServer.ts      @stdiobus/core
+
+# Provider layer — security-sensitive (credentials handling)
+src/provider/                       @stdiobus/core
+
+# Error handling and MCP protocol mapping
+src/errors/                         @stdiobus/core
+
+# CI/CD and build configuration
+.github/                            @stdiobus/core
+build/                              @stdiobus/core
+package.json                        @stdiobus/core
+tsconfig*.json                      @stdiobus/core
+
+# Security-sensitive files
+src/observability/                  @stdiobus/core

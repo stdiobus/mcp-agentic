@@ -1,0 +1,61 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for @stdiobus/mcp-agentic
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature. Please describe your use case and proposed solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What use case does it enable?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like. Include API examples if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternatives have you considered? Why are they insufficient?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Affected Area
+      description: Which part of the system does this affect?
+      multiple: true
+      options:
+        - MCP Tools
+        - Server (McpAgenticServer)
+        - Executor (InProcess/Worker)
+        - Provider Layer (AIProvider)
+        - Agent (AgentHandler)
+        - Error Handling
+        - Observability
+        - CLI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, diagrams, or references.
+    validations:
+      required: false

@@ -1,0 +1,189 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# PR Validation — Enforces PR hygiene and merge readiness
+#
+# Runs on pull_request events targeting main and develop.
+# Validates PR title format, description quality, commit hygiene,
+# and ensures no secrets or forbidden patterns are introduced.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ── PR Title Format ─────────────────────────────────────────────────────
+  pr-title:
+    name: PR Title Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^.{1,70}$
+          subjectPatternError: |
+            PR title subject must be 70 characters or fewer.
+            Current: "{subject}" ({length} chars)
+
+  # ── PR Description ──────────────────────────────────────────────────────
+  pr-description:
+    name: PR Description Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR description is not empty
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = (pr.body || '').trim();
+
+            if (body.length < 30) {
+              core.setFailed(
+                'PR description must be at least 30 characters. ' +
+                'Include: summary of changes, risks, and how to test.'
+              );
+              return;
+            }
+
+            core.info(`PR description length: ${body.length} chars — OK`);
+
+  # ── Secrets & Sensitive Files ───────────────────────────────────────────
+  secrets-scan:
+    name: Secrets & Sensitive Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for sensitive file changes
+        run: |
+          # Files that should never be committed
+          FORBIDDEN_PATTERNS=(
+            '\.env$'
+            '\.env\.'
+            'credentials\.json'
+            '\.pem$'
+            '\.key$'
+            'id_rsa'
+            'id_ed25519'
+          )
+
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD 2>/dev/null || echo "")
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changed files detected (or base ref unavailable). Skipping."
+            exit 0
+          fi
+
+          VIOLATIONS=""
+          for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+            MATCHES=$(echo "$CHANGED_FILES" | grep -iE "$pattern" || true)
+            if [ -n "$MATCHES" ]; then
+              VIOLATIONS="$VIOLATIONS\n  - $MATCHES (matched: $pattern)"
+            fi
+          done
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Sensitive files detected in PR:$VIOLATIONS"
+            exit 1
+          fi
+
+          echo "No sensitive files detected."
+
+      - name: Scan for hardcoded secrets in diff
+        run: |
+          DIFF=$(git diff origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.js' '*.json' '*.yml' '*.yaml' '*.md' 2>/dev/null || echo "")
+
+          if [ -z "$DIFF" ]; then
+            echo "No diff available. Skipping."
+            exit 0
+          fi
+
+          # Patterns that suggest hardcoded secrets (added lines only)
+          SECRET_PATTERNS=(
+            'AKIA[0-9A-Z]{16}'                    # AWS Access Key
+            'sk-[a-zA-Z0-9]{20,}'                 # OpenAI / Stripe-style keys
+            'ghp_[a-zA-Z0-9]{36}'                 # GitHub PAT
+            'github_pat_[a-zA-Z0-9_]{82}'         # GitHub fine-grained PAT
+            'sk-ant-[a-zA-Z0-9-]{90,}'            # Anthropic API key
+            'AIza[0-9A-Za-z_-]{35}'               # Google API key
+          )
+
+          FOUND=""
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            MATCHES=$(echo "$DIFF" | grep -E "^\+" | grep -oE "$pattern" || true)
+            if [ -n "$MATCHES" ]; then
+              FOUND="$FOUND\n  Pattern: $pattern"
+            fi
+          done
+
+          if [ -n "$FOUND" ]; then
+            echo "::error::Potential hardcoded secrets detected in diff:$FOUND"
+            echo "::error::Remove secrets and use environment variables or GitHub Secrets instead."
+            exit 1
+          fi
+
+          echo "No hardcoded secrets detected."
+
+  # ── Diff Size Check ─────────────────────────────────────────────────────
+  diff-size:
+    name: Diff Size Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check diff size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            const totalChanges = files.reduce((sum, f) => sum + f.changes, 0);
+            const totalFiles = files.length;
+
+            core.info(`PR changes: ${totalChanges} lines across ${totalFiles} files`);
+
+            // Warn (not fail) on large PRs
+            if (totalChanges > 1000) {
+              core.warning(
+                `Large PR detected: ${totalChanges} lines changed across ${totalFiles} files. ` +
+                `Consider splitting into smaller, focused PRs for easier review.`
+              );
+            }
+
+            if (totalFiles > 50) {
+              core.warning(
+                `PR touches ${totalFiles} files. Consider splitting into smaller PRs.`
+              );
+            }

@@ -1,0 +1,47 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Stale — Automatically manage stale issues and PRs
+#
+# Runs daily. Marks issues/PRs as stale after 30 days of inactivity,
+# closes them after 7 more days without response.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Stale
+
+on:
+  schedule:
+    # Daily at 00:00 UTC
+    - cron: '0 0 * * *'
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Manage Stale Issues & PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark and close stale items
+        uses: actions/stale@v9
+        with:
+          stale-issue-message: >
+            This issue has been automatically marked as stale because it has not had
+            recent activity. It will be closed in 7 days if no further activity occurs.
+            If this issue is still relevant, please comment to keep it open.
+          stale-pr-message: >
+            This pull request has been automatically marked as stale because it has not had
+            recent activity. It will be closed in 7 days if no further activity occurs.
+            Please update or comment to keep it open.
+          close-issue-message: >
+            This issue was closed because it has been stale for 7 days with no activity.
+            Feel free to reopen if this is still relevant.
+          close-pr-message: >
+            This pull request was closed because it has been stale for 7 days with no activity.
+            Feel free to reopen if this is still relevant.
+          days-before-stale: 30
+          days-before-close: 7
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: 'pinned,security,bug,enhancement'
+          exempt-pr-labels: 'pinned,security'
+          operations-per-run: 50

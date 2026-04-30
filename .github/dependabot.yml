@@ -1,0 +1,64 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Dependabot — Automated dependency updates
+#
+# Checks for npm and GitHub Actions updates weekly.
+# Groups minor/patch updates to reduce PR noise.
+# ──────────────────────────────────────────────────────────────────────────────
+
+version: 2
+updates:
+  # npm dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - stdiobus/core
+    labels:
+      - dependencies
+      - automated
+    commit-message:
+      prefix: "deps"
+      include: scope
+    groups:
+      # Group minor and patch updates for dev dependencies
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      # Group minor and patch updates for production dependencies
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    # Ignore major version bumps for peer dependencies (breaking changes)
+    ignore:
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@anthropic-ai/sdk"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@google/generative-ai"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - stdiobus/core
+    labels:
+      - ci
+      - automated
+    commit-message:
+      prefix: "ci"
