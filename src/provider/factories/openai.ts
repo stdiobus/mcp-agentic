@@ -22,6 +22,7 @@ import { createRequire } from 'node:module';
 import { z } from 'zod';
 import { defineProvider } from '../defineProvider.js';
 import { BridgeError } from '../../errors/BridgeError.js';
+import { OpenAIProvider } from '../providers/OpenAIProvider.js';
 import type { RuntimeParams } from '../AIProvider.js';
 
 const esmRequire = createRequire(import.meta.url);
@@ -81,12 +82,11 @@ export const openAI = defineProvider({
     }
 
     // Map flat options → existing ProviderConfig and construct provider
-    const { OpenAIProvider } = esmRequire('../providers/OpenAIProvider.js');
     return new OpenAIProvider(
       {
         credentials: { apiKey: options.apiKey },
         models: options.models,
-        defaults: options.defaults,
+        ...(options.defaults !== undefined ? { defaults: options.defaults } : {}),
       },
       OpenAISDK,
     );
