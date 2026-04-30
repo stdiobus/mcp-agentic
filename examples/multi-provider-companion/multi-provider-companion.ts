@@ -9,7 +9,10 @@
  *
  * A fully configurable AI companion that supports multiple AI providers
  * (OpenAI, Anthropic, Google Gemini) through their native SDKs, exposed
- * as an MCP Agentic server over stdio.
+ * as an MCP Agentic server over stdio. Uses the Provider Factory API
+ * ({@link openAI}, {@link anthropic}, {@link gemini} +
+ * {@link createMultiProviderAgent}) for declarative setup with full
+ * runtime parameter control through MCP tools.
  *
  * Configuration is split by concern:
  *
@@ -83,11 +86,11 @@
  * ## Usage
  *
  * ```bash
- * # Uses multi-provider.config.json from examples/ directory
- * OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... npx tsx examples/multi-provider-companion.ts
+ * # Uses multi-provider.config.json from examples/multi-provider-companion/ directory
+ * OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... npx tsx examples/multi-provider-companion/multi-provider-companion.ts
  *
  * # Explicit config path
- * OPENAI_API_KEY=sk-... COMPANION_CONFIG=./my-config.json npx tsx examples/multi-provider-companion.ts
+ * OPENAI_API_KEY=sk-... COMPANION_CONFIG=./my-config.json npx tsx examples/multi-provider-companion/multi-provider-companion.ts
  * ```
  *
  * ## MCP config (mcp.json)
@@ -97,12 +100,12 @@
  *   "mcpServers": {
  *     "multi-companion": {
  *       "command": "npx",
- *       "args": ["tsx", "examples/multi-provider-companion.ts"],
+ *       "args": ["tsx", "examples/multi-provider-companion/multi-provider-companion.ts"],
  *       "env": {
  *         "OPENAI_API_KEY": "sk-...",
  *         "ANTHROPIC_API_KEY": "sk-ant-...",
  *         "GOOGLE_AI_API_KEY": "AIza...",
- *         "COMPANION_CONFIG": "./examples/multi-provider.config.json"
+ *         "COMPANION_CONFIG": "./examples/multi-provider-companion/multi-provider.config.json"
  *       }
  *     }
  *   }
@@ -137,13 +140,12 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   McpAgenticServer,
-  MultiProviderAgent,
-  ProviderRegistry,
-  OpenAIProvider,
-  AnthropicProvider,
-  GoogleGeminiProvider,
+  openAI,
+  anthropic,
+  gemini,
+  createMultiProviderAgent,
 } from '../../src/index.js';
-import type { RuntimeParams, ProviderConfig } from '../../src/index.js';
+import type { AIProvider, RuntimeParams } from '../../src/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -166,13 +168,6 @@ interface MultiProviderJsonConfig {
   defaultProvider?: string;
   defaults?: RuntimeParams;
 }
-
-/** Mapping from provider id to the env var holding its API key. */
-const PROVIDER_ENV_KEYS: Record<string, string> = {
-  'openai': 'OPENAI_API_KEY',
-  'anthropic': 'ANTHROPIC_API_KEY',
-  'google-gemini': 'GOOGLE_AI_API_KEY',
-};
 
 /** Default models when not specified in config. */
 const DEFAULT_MODELS: Record<string, string[]> = {
@@ -249,89 +244,57 @@ function loadJsonConfig(): MultiProviderJsonConfig {
 // ── Provider Registration ───────────────────────────────────────
 
 /**
- * Create a ProviderConfig for a given provider id.
- *
- * @param providerId - The provider identifier.
- * @param apiKey - The API key from environment.
- * @param providerJson - Optional per-provider config from JSON.
- * @returns ProviderConfig ready for provider construction.
+ * Mapping from provider id to:
+ * - `envKey`: environment variable holding the API key
+ * - `factory`: declarative provider factory from the Provider Factory API
  */
-function buildProviderConfig(
-  providerId: string,
-  apiKey: string,
-  providerJson?: ProviderJsonConfig,
-): ProviderConfig {
-  return {
-    credentials: { apiKey },
-    models: providerJson?.models ?? DEFAULT_MODELS[providerId] ?? [],
-    defaults: providerJson?.defaults,
-  };
-}
+const PROVIDER_DEFS: Record<string, { envKey: string; factory: (opts: { apiKey: string; models: string[]; defaults?: RuntimeParams }) => AIProvider }> = {
+  'openai': { envKey: 'OPENAI_API_KEY', factory: openAI },
+  'anthropic': { envKey: 'ANTHROPIC_API_KEY', factory: anthropic },
+  'google-gemini': { envKey: 'GOOGLE_AI_API_KEY', factory: gemini },
+};
 
 /**
- * Register all available providers into a ProviderRegistry.
+ * Create AIProvider instances for all providers whose API key is present
+ * in the environment. Uses the declarative factory API — each factory
+ * validates options via Zod and loads its SDK lazily.
  *
- * Only providers whose API key is present in the environment are registered.
- * Uses the async `create()` factory methods for dynamic SDK import.
- *
- * @param providersJson - Provider configurations from the JSON config file.
- * @returns Object with the registry and the id of the first registered provider.
+ * @param providersJson - Per-provider configurations from the JSON config file.
+ * @returns Array of created providers and the id of the first one registered.
  */
-async function registerProviders(
+function createProviders(
   providersJson: Record<string, ProviderJsonConfig>,
-): Promise<{ registry: ProviderRegistry; firstProviderId: string | null }> {
-  const registry = new ProviderRegistry();
+): { providers: AIProvider[]; firstProviderId: string | null } {
+  const providers: AIProvider[] = [];
   let firstProviderId: string | null = null;
 
-  // OpenAI
-  const openaiKey = process.env['OPENAI_API_KEY'];
-  if (openaiKey && openaiKey !== '${OPENAI_API_KEY}') {
+  for (const [providerId, def] of Object.entries(PROVIDER_DEFS)) {
+    const apiKey = process.env[def.envKey];
+    if (!apiKey || apiKey === `\${${def.envKey}}`) continue;
+
+    const providerJson = providersJson[providerId];
+    const models = providerJson?.models ?? DEFAULT_MODELS[providerId] ?? [];
+
+    // Skip providers with no models configured
+    if (models.length === 0) continue;
+
     try {
-      const config = buildProviderConfig('openai', openaiKey, providersJson['openai']);
-      const provider = await OpenAIProvider.create(config);
-      registry.register(provider);
-      firstProviderId ??= 'openai';
-      process.stderr.write(`[multi-provider] Registered OpenAI provider (models: ${config.models.join(', ')})\n`);
+      const provider = def.factory({
+        apiKey,
+        models: models as [string, ...string[]],
+        defaults: providerJson?.defaults,
+      });
+      providers.push(provider);
+      firstProviderId ??= providerId;
+      process.stderr.write(`[multi-provider] Registered ${providerId} provider (models: ${models.join(', ')})\n`);
     } catch (err) {
       process.stderr.write(
-        `[multi-provider] Warning: Failed to register OpenAI provider: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[multi-provider] Warning: Failed to register ${providerId} provider: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }
 
-  // Anthropic
-  const anthropicKey = process.env['ANTHROPIC_API_KEY'];
-  if (anthropicKey && anthropicKey !== '${ANTHROPIC_API_KEY}') {
-    try {
-      const config = buildProviderConfig('anthropic', anthropicKey, providersJson['anthropic']);
-      const provider = await AnthropicProvider.create(config);
-      registry.register(provider);
-      firstProviderId ??= 'anthropic';
-      process.stderr.write(`[multi-provider] Registered Anthropic provider (models: ${config.models.join(', ')})\n`);
-    } catch (err) {
-      process.stderr.write(
-        `[multi-provider] Warning: Failed to register Anthropic provider: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-    }
-  }
-
-  // Google Gemini
-  const geminiKey = process.env['GOOGLE_AI_API_KEY'];
-  if (geminiKey && geminiKey !== '${GOOGLE_AI_API_KEY}') {
-    try {
-      const config = buildProviderConfig('google-gemini', geminiKey, providersJson['google-gemini']);
-      const provider = await GoogleGeminiProvider.create(config);
-      registry.register(provider);
-      firstProviderId ??= 'google-gemini';
-      process.stderr.write(`[multi-provider] Registered Google Gemini provider (models: ${config.models.join(', ')})\n`);
-    } catch (err) {
-      process.stderr.write(
-        `[multi-provider] Warning: Failed to register Google Gemini provider: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-    }
-  }
-
-  return { registry, firstProviderId };
+  return { providers, firstProviderId };
 }
 
 // ── Main ────────────────────────────────────────────────────────
@@ -347,10 +310,11 @@ async function main(): Promise<void> {
     : buildSystemPrompt(role);
   const globalDefaults = json.defaults ?? {};
 
-  // Register providers based on available API keys
-  const { registry, firstProviderId } = await registerProviders(json.providers ?? {});
+  // Create providers based on available API keys using the factory API.
+  // Each factory validates options via Zod and loads its SDK lazily.
+  const { providers, firstProviderId } = createProviders(json.providers ?? {});
 
-  if (!firstProviderId) {
+  if (!firstProviderId || providers.length === 0) {
     process.stderr.write(
       '[multi-provider] Error: No AI providers could be registered.\n' +
       '[multi-provider] Set at least one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY\n',
@@ -359,23 +323,26 @@ async function main(): Promise<void> {
   }
 
   // Resolve default provider: config preference > first available
-  const defaultProviderId = (json.defaultProvider && registry.has(json.defaultProvider))
+  const defaultProviderId = (json.defaultProvider && providers.some(p => p.id === json.defaultProvider))
     ? json.defaultProvider
     : firstProviderId;
 
-  // Create the multi-provider agent
-  const agent = new MultiProviderAgent({
+  // Create the multi-provider agent via the helper.
+  // createMultiProviderAgent handles ProviderRegistry creation internally.
+  const agent = createMultiProviderAgent({
     id: name,
+    providers,
     defaultProviderId,
-    registry,
     capabilities,
     systemPrompt,
     defaults: globalDefaults,
   });
 
-  // Create and start the MCP server
-  const server = new McpAgenticServer({ defaultAgentId: name })
-    .register(agent);
+  // Pass the agent directly via the config — no separate .register() needed.
+  const server = new McpAgenticServer({
+    agents: [agent],
+    defaultAgentId: name,
+  });
 
   const shutdown = async (): Promise<void> => {
     try { await server.close(); } catch { /* best-effort */ }
@@ -387,12 +354,10 @@ async function main(): Promise<void> {
 
   try {
     await server.start();
-
-    const providers = registry.list();
     process.stderr.write(
       `[multi-provider] Started — role: "${role}", agent: "${name}", ` +
       `default provider: ${defaultProviderId}, ` +
-      `providers: ${providers.map((p) => p.id).join(', ')}\n`,
+      `providers: ${providers.map(p => p.id).join(', ')}\n`,
     );
   } catch (error) {
     process.stderr.write(

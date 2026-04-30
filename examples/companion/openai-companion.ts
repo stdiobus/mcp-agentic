@@ -9,8 +9,8 @@
  *
  * A fully configurable AI companion powered by OpenAI via the official
  * `openai` SDK, exposed as an MCP Agentic server over stdio. Uses the
- * {@link MultiProviderAgent} with a single OpenAI provider for
- * full runtime parameter control through MCP tools.
+ * Provider Factory API ({@link openAI} + {@link createMultiProviderAgent})
+ * for declarative setup with full runtime parameter control through MCP tools.
  *
  * Configuration is split by concern:
  *
@@ -65,11 +65,11 @@
  * ## Usage
  *
  * ```bash
- * # Uses companion.config.json from examples/ directory
- * OPENAI_API_KEY=sk-... npx tsx examples/openai-companion.ts
+ * # Uses companion.config.json from examples/companion/ directory
+ * OPENAI_API_KEY=sk-... npx tsx examples/companion/openai-companion.ts
  *
  * # Explicit config path
- * OPENAI_API_KEY=sk-... COMPANION_CONFIG=./my-config.json npx tsx examples/openai-companion.ts
+ * OPENAI_API_KEY=sk-... COMPANION_CONFIG=./my-config.json npx tsx examples/companion/openai-companion.ts
  * ```
  *
  * ## MCP config (mcp.json)
@@ -79,10 +79,10 @@
  *   "mcpServers": {
  *     "companion": {
  *       "command": "npx",
- *       "args": ["tsx", "examples/openai-companion.ts"],
+ *       "args": ["tsx", "examples/companion/openai-companion.ts"],
  *       "env": {
  *         "OPENAI_API_KEY": "sk-...",
- *         "COMPANION_CONFIG": "./examples/companion.config.json"
+ *         "COMPANION_CONFIG": "./examples/companion/companion.config.json"
  *       }
  *     }
  *   }
@@ -90,6 +90,16 @@
  * ```
  *
  * ## MCP tool usage examples
+ *
+ * ### Discover the companion agent and its provider
+ * ```
+ * agents_discover → { agents: [{ id: "companion", providers: [{ id: "openai", models: ["gpt-4o-mini"] }] }] }
+ * ```
+ *
+ * ### Create a session (uses the default agent)
+ * ```
+ * sessions_create → { sessionId: "..." }
+ * ```
  *
  * ### Prompt with runtime parameter overrides
  * ```
@@ -107,9 +117,8 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   McpAgenticServer,
-  MultiProviderAgent,
-  ProviderRegistry,
-  OpenAIProvider,
+  openAI,
+  createMultiProviderAgent,
 } from '../../src/index.js';
 import type { RuntimeParams } from '../../src/index.js';
 
@@ -138,6 +147,8 @@ interface CompanionConfig {
   capabilities: string[];
   defaults: RuntimeParams;
 }
+
+// ── Helpers ─────────────────────────────────────────────────────
 
 /** Build the default system prompt from the companion's role. */
 function buildSystemPrompt(role: string): string {
@@ -221,7 +232,7 @@ function loadConfig(): CompanionConfig {
   const systemPrompt = (typeof json.systemPrompt === 'string')
     ? json.systemPrompt
     : buildSystemPrompt(role);
-  const defaults = json.defaults ?? {};
+  const defaults: RuntimeParams = { model, ...json.defaults };
 
   return { apiKey, model, name, role, systemPrompt, capabilities, defaults };
 }
@@ -231,29 +242,30 @@ function loadConfig(): CompanionConfig {
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // Create OpenAI provider via the official SDK
-  const openaiProvider = await OpenAIProvider.create({
-    credentials: { apiKey: config.apiKey },
+  // Create OpenAI provider via the declarative factory API.
+  // Zod validates options at call time; the openai SDK is loaded lazily.
+  const provider = openAI({
+    apiKey: config.apiKey,
     models: [config.model],
     defaults: { model: config.model },
   });
 
-  // Set up provider registry with OpenAI
-  const registry = new ProviderRegistry();
-  registry.register(openaiProvider);
-
-  // Create the multi-provider agent (single provider in this case)
-  const agent = new MultiProviderAgent({
+  // Create the multi-provider agent (single provider in this case).
+  // createMultiProviderAgent handles ProviderRegistry creation internally.
+  const agent = createMultiProviderAgent({
     id: config.name,
+    providers: [provider],
     defaultProviderId: 'openai',
-    registry,
     capabilities: config.capabilities,
     systemPrompt: config.systemPrompt,
     defaults: config.defaults,
   });
 
-  const server = new McpAgenticServer({ defaultAgentId: config.name })
-    .register(agent);
+  // Pass the agent directly via the config — no separate .register() needed.
+  const server = new McpAgenticServer({
+    agents: [agent],
+    defaultAgentId: config.name,
+  });
 
   const shutdown = async (): Promise<void> => {
     try { await server.close(); } catch { /* best-effort */ }
