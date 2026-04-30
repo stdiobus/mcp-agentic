@@ -47,7 +47,7 @@ Do not use this power when the task can be completed fully without external dele
 
 ## Runtime model
 
-> **Note:** The `mcp.json` config shipped with this power starts the default CLI reference server, which has no agents registered. It is useful for verifying MCP connectivity and inspecting the tool schema, but cannot delegate work. For actual agent delegation, create your own server script that calls `server.register()` before `server.startStdio()` — see the Programmatic setup example below.
+> **Note:** The `mcp.json` config shipped with this power starts the default CLI reference server, which has no agents registered. It is useful for verifying MCP connectivity and inspecting the tool schema, but cannot delegate work. For actual agent delegation, create your own server script that calls `server.register()` before `server.start()` — see the Programmatic setup example below.
 
 **Architecture:**
 - The MCP client communicates with 8 MCP tools exposed by `McpAgenticServer`
@@ -230,7 +230,7 @@ const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
     capabilities: ['data-analysis'],
   });
 
-await server.startStdio();
+await server.start();
 ```
 
 ### Worker configuration
@@ -326,7 +326,7 @@ const agent = new MultiProviderCompanionAgent({
 const server = new McpAgenticServer({ defaultAgentId: 'multi-ai' })
   .register(agent);
 
-await server.startStdio();
+await server.start();
 ```
 
 ## Steering references
@@ -429,7 +429,7 @@ sessions_close({ sessionId: "abc-123" })
 - Review bridge logs in stderr
 
 **Agent discovery returns empty:**
-- The default CLI (`npx @stdiobus/mcp-agentic`) starts with no agents registered — this is expected. Create a custom entry point that calls `server.register()` before `server.startStdio()`.
+- The default CLI (`npx @stdiobus/mcp-agentic`) starts with no agents registered — this is expected. Create a custom entry point that calls `server.register()` before `server.start()`.
 - If using a custom entry point, ensure agents are registered via `register()` or `registerWorker()` before starting the server.
 - Check agent status — agents may be `unavailable`
 

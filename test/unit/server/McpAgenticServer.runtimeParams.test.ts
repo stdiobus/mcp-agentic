@@ -117,7 +117,7 @@ async function setupServer(options?: { systemPrompt?: string; defaults?: Runtime
 
   const server = new McpAgenticServer({ silent: true });
   server.register(agent);
-  await server.startStdio();
+  await server.start();
 
   return { server, agent, mockProvider, registry };
 }
@@ -368,7 +368,7 @@ describe('McpAgenticServer — runtimeParams with non-multi-provider agent', () 
 
     const server = new McpAgenticServer({ silent: true });
     server.register(plainAgent);
-    await server.startStdio();
+    await server.start();
 
     // Create a session
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
@@ -403,7 +403,7 @@ describe('McpAgenticServer — runtimeParams with non-multi-provider agent', () 
 
     const server = new McpAgenticServer({ silent: true });
     server.register(plainAgent);
-    await server.startStdio();
+    await server.start();
 
     const tasksDelegateTool = registeredTools.get('tasks_delegate')!;
     const result = await tasksDelegateTool.callback({

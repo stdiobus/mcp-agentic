@@ -117,7 +117,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 try {
-  await server.startStdio();
+  await server.start();
 } catch (error) {
   process.stderr.write(`[test-server] Failed to start: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;

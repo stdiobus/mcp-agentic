@@ -24,4 +24,4 @@ const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
     },
   });
 
-await server.startStdio();
+await server.start();

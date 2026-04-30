@@ -22,7 +22,7 @@
  * };
  *
  * const server = new McpAgenticServer().register(agent);
- * await server.startStdio();
+ * await server.start();
  */
 
 // ─── Server ──────────────────────────────────────────────────────

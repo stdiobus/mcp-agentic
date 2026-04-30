@@ -181,7 +181,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 try {
-  await server.startStdio();
+  await server.start();
   process.stderr.write(`[openai-agent-server] Started on stdio (model: ${model})\n`);
 } catch (error) {
   process.stderr.write(`[openai-agent-server] Failed: ${error instanceof Error ? error.message : String(error)}\n`);

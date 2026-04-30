@@ -32,7 +32,7 @@ In-process agents **always take priority** over workers. When an `agentId` exist
 
 ### Resolution flow:
 
-1. Check executor cache (populated on `startStdio()`)
+1. Check executor cache (populated on `start()`)
 2. On cache miss, call `discover()` on `InProcessExecutor` first
 3. If not found, call `discover()` on `WorkerExecutor`
 4. Cache the result for subsequent lookups

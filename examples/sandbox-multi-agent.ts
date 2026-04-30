@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     .register(docsAgent)
     .register(new ChatAgent());
 
-  // Note: In a real setup, you'd call server.startStdio() to serve MCP.
+  // Note: In a real setup, you'd call server.start() to serve MCP.
   // For this sandbox, we test the executor directly.
 
   // Access the internal executor for demonstration

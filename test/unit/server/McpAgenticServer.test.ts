@@ -123,7 +123,7 @@ describe('McpAgenticServer — Property Tests', () => {
         server.register(inProcessAgent);
         server.registerWorker({ id: agentId, command: 'node', args: ['worker.js'] });
 
-        await server.startStdio();
+        await server.start();
 
         // Get the sessions_create tool callback registered via McpServer.registerTool
         const sessionsCreateTool = registeredTools.get('sessions_create');
@@ -176,7 +176,7 @@ describe('McpAgenticServer — Unit Tests', () => {
     // StdioBus should not be constructed yet
     expect(MockStdioBus).not.toHaveBeenCalled();
 
-    await server.startStdio();
+    await server.start();
 
     // Now StdioBus should be constructed
     expect(MockStdioBus).toHaveBeenCalledTimes(1);
@@ -203,11 +203,24 @@ describe('McpAgenticServer — Unit Tests', () => {
     expect(toolNames).toContain('tasks_delegate');
   });
 
-  it('lifecycle — startStdio and close work without errors', async () => {
+  it('lifecycle — start and close work without errors', async () => {
     const server = new McpAgenticServer({ silent: true });
     const agent = createMockAgent('test-agent');
     server.register(agent);
 
+    await server.start();
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+
+    await server.close();
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('startStdio() still works as deprecated shim delegating to start()', async () => {
+    const server = new McpAgenticServer({ silent: true });
+    const agent = createMockAgent('test-agent');
+    server.register(agent);
+
+    // startStdio() is deprecated but must remain functional for backward compat
     await server.startStdio();
     expect(mockConnect).toHaveBeenCalledTimes(1);
 
@@ -227,7 +240,7 @@ describe('McpAgenticServer — Executor Cache', () => {
     const server = new McpAgenticServer({ silent: true });
     server.register(agent);
 
-    await server.startStdio();
+    await server.start();
 
     // Spy on InProcessExecutor.prototype.discover after startup
     const discoverSpy = jest.spyOn(InProcessExecutor.prototype, 'discover');
@@ -238,7 +251,7 @@ describe('McpAgenticServer — Executor Cache', () => {
 
     await sessionsCreateTool.callback({ agentId: 'cached-agent' });
 
-    // The cache was populated during startStdio(), so discover() should NOT be called
+    // The cache was populated during start(), so discover() should NOT be called
     expect(discoverSpy).not.toHaveBeenCalled();
 
     // Second call — still cached, still no discover()
@@ -258,7 +271,7 @@ describe('McpAgenticServer — Executor Cache', () => {
     const server = new McpAgenticServer({ silent: true });
     server.register(agent1);
 
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -292,7 +305,7 @@ describe('McpAgenticServer — Executor Cache', () => {
     const server = new McpAgenticServer({ silent: true });
     server.register(agent);
 
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -315,7 +328,7 @@ describe('McpAgenticServer — Executor Cache', () => {
     await server.close();
   });
 
-  it('cache populated on startStdio() with in-process agents taking priority', async () => {
+  it('cache populated on start() with in-process agents taking priority', async () => {
     const onSessionCreate = jest.fn<any>().mockResolvedValue(undefined);
     const agent = createMockAgent('shared-id', ['test'], {
       onSessionCreate,
@@ -326,7 +339,7 @@ describe('McpAgenticServer — Executor Cache', () => {
     server.register(agent);
     server.registerWorker({ id: 'shared-id', command: 'node', args: ['w.js'] });
 
-    await server.startStdio();
+    await server.start();
 
     // Spy on discover — should not be called since cache is populated
     const discoverSpy = jest.spyOn(InProcessExecutor.prototype, 'discover');
@@ -359,7 +372,7 @@ describe('McpAgenticServer — Backpressure', () => {
 
     const server = new McpAgenticServer({ maxConcurrentRequests: 5, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -384,7 +397,7 @@ describe('McpAgenticServer — Backpressure', () => {
 
     const server = new McpAgenticServer({ maxConcurrentRequests: 2, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -422,7 +435,7 @@ describe('McpAgenticServer — Backpressure', () => {
 
     const server = new McpAgenticServer({ maxConcurrentRequests: 1, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -444,7 +457,7 @@ describe('McpAgenticServer — Backpressure', () => {
 
     const server = new McpAgenticServer({ maxConcurrentRequests: 1, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -471,7 +484,7 @@ describe('McpAgenticServer — Backpressure', () => {
     // No maxConcurrentRequests in config — should default to 50
     const server = new McpAgenticServer({ silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
 
@@ -496,7 +509,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // 1 KiB limit for easy testing
     const server = new McpAgenticServer({ maxPromptBytes: 1024, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     // Create a session first
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
@@ -521,7 +534,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // Very small limit: 10 bytes
     const server = new McpAgenticServer({ maxPromptBytes: 10, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     // Create a session first
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
@@ -546,7 +559,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // Very small limit: 10 bytes
     const server = new McpAgenticServer({ maxPromptBytes: 10, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const tasksDelegateTool = registeredTools.get('tasks_delegate')!;
     await expect(
@@ -564,7 +577,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // Very small metadata limit: 10 bytes
     const server = new McpAgenticServer({ maxMetadataBytes: 10, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
     // Large metadata object that serializes to more than 10 bytes
@@ -585,7 +598,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // Very small metadata limit: 10 bytes
     const server = new McpAgenticServer({ maxMetadataBytes: 10, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const tasksDelegateTool = registeredTools.get('tasks_delegate')!;
     const bigMetadata = { key: 'A'.repeat(100) };
@@ -604,7 +617,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // 1 KiB limit
     const server = new McpAgenticServer({ maxMetadataBytes: 1024, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
     // Small metadata that fits within 1 KiB
@@ -623,7 +636,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
     // Very small metadata limit, but no metadata provided
     const server = new McpAgenticServer({ maxMetadataBytes: 1, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
     const result = await sessionsCreateTool.callback({ agentId: 'size-agent' });
@@ -655,7 +668,7 @@ describe('McpAgenticServer — Input Size Validation', () => {
 
     const server = new McpAgenticServer({ maxPromptBytes: 5, silent: true });
     server.register(agent);
-    await server.startStdio();
+    await server.start();
 
     const sessionsCreateTool = registeredTools.get('sessions_create')!;
     const createResult = await sessionsCreateTool.callback({ agentId: 'size-agent' });

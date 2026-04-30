@@ -20,7 +20,7 @@ import type {
 } from '../../src/index.js';
 
 // ─── README: Quick Start snippet ─────────────────────────────────
-// Tests that the exact pattern from README works (minus startStdio which captures stdio)
+// Tests that the exact pattern from README works (minus start() which captures stdio)
 
 describe('README Quick Start', () => {
   it('creates server with register() and inline agent', () => {
@@ -34,7 +34,7 @@ describe('README Quick Start', () => {
         },
       });
 
-    // startStdio() would capture stdin/stdout — we verify construction + registration worked
+    // start() would capture stdin/stdout — we verify construction + registration worked
     expect(server).toBeInstanceOf(McpAgenticServer);
   });
 

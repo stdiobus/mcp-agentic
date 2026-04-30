@@ -386,7 +386,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', shutdown);
 
   try {
-    await server.startStdio();
+    await server.start();
 
     const providers = registry.list();
     process.stderr.write(

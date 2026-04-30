@@ -9,7 +9,7 @@
  *
  * Owns the MCP server, tool registration, and executor lifecycle.
  * Users create an instance, register agents (in-process or workers),
- * and call `startStdio()` to begin serving MCP tool calls.
+ * and call `start()` to begin serving MCP tool calls.
  *
  * Tool logic lives in `src/mcp/tools/*.ts`. This class only:
  *   1. Resolves the correct executor for each request
@@ -21,7 +21,7 @@
  *   .register(myAgent)
  *   .registerWorker({ id: 'py-agent', command: 'python', args: ['agent.py'] });
  *
- * await server.startStdio();
+ * await server.start();
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -175,10 +175,14 @@ export class McpAgenticServer {
   /**
    * Start executors and connect the MCP server via stdio transport.
    *
+   * Currently uses stdio as the default transport. In the future, `start()`
+   * may accept options such as `{ transport: 'http' }` or support
+   * `addTransport()` + `start()` for multi-transport scenarios.
+   *
    * @returns Promise that resolves when the server is ready to accept tool calls.
    * @throws {BridgeError} TRANSPORT if StdioBus fails to start.
    */
-  async startStdio(): Promise<void> {
+  async start(): Promise<void> {
     await this.inProcess.start();
 
     if (this.worker) {
@@ -191,6 +195,15 @@ export class McpAgenticServer {
 
     const transport = new StdioServerTransport();
     await this.mcpServer.connect(transport);
+  }
+
+  /**
+   * @deprecated Use {@link start} instead. Will be removed in a future major version.
+   *
+   * Start executors and connect the MCP server via stdio transport.
+   */
+  async startStdio(): Promise<void> {
+    return this.start();
   }
 
   /**

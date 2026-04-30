@@ -56,7 +56,7 @@ const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
     },
   });
 
-await server.startStdio();
+await server.start();
 ```
 
 This is the primary usage path. Without `register()` calls, no agents are available and delegation tools (`tasks_delegate`, `sessions_create`, etc.) will fail.
@@ -104,7 +104,7 @@ const agent = createMultiProviderAgent({
 const server = new McpAgenticServer({ defaultAgentId: 'multi-ai' })
   .register(agent);
 
-await server.startStdio();
+await server.start();
 ```
 
 MCP clients can then select a provider per session and override parameters per prompt:
@@ -216,7 +216,7 @@ const agent = new MultiProviderCompanionAgent({
 const server = new McpAgenticServer({ defaultAgentId: 'multi-ai' })
   .register(agent);
 
-await server.startStdio();
+await server.start();
 ```
 
 </details>

@@ -264,7 +264,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', shutdown);
 
   try {
-    await server.startStdio();
+    await server.start();
     process.stderr.write(
       `[companion] Started — role: "${config.role}", agent: "${config.name}", model: ${config.model}\n`,
     );

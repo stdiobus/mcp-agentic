@@ -117,14 +117,14 @@ The CLI entry point (`src/cli/server.ts`) is a **reference/diagnostics server** 
 import { McpAgenticServer } from '../index.js';
 
 const server = new McpAgenticServer();
-await server.startStdio();
+await server.start();
 
 // Warns: "No agents registered. This CLI is a reference server for diagnostics only."
 ```
 
 `bridge_health` and `agents_discover` will respond (healthy: false / empty list), but `tasks_delegate` and `sessions_create` will fail because there are no agents.
 
-For actual agent delegation, create your own entry point that calls `server.register()` before `server.startStdio()`.
+For actual agent delegation, create your own entry point that calls `server.register()` before `server.start()`.
 
 ## Best practices
 
@@ -252,7 +252,7 @@ const agent = new MultiProviderCompanionAgent({
 const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
   .register(agent);
 
-await server.startStdio();
+await server.start();
 ```
 
 ## RuntimeParams
