@@ -31,7 +31,7 @@ license: "Apache-2.0"
 
 This power enables MCP clients to communicate with ACP-compatible agents through a local MCP bridge. Agents can run in-process (via `AgentHandler` implementations) or as external worker processes (via `@stdiobus/node` StdioBus). The single entry point is `McpAgenticServer`, which owns the MCP server, tool registration, and executor lifecycle.
 
-The power includes a **multi-provider AI layer** supporting OpenAI, Anthropic, and Google Gemini through their native SDKs. Providers are registered in a `ProviderRegistry` and used by `MultiProviderCompanionAgent`, which allows dynamic provider selection per session and runtime parameter overrides at both session and prompt levels.
+The power includes a **multi-provider AI layer** supporting OpenAI, Anthropic, and Google Gemini through their native SDKs. The **Factory API** (`openAI()`, `anthropic()`, `gemini()`, `createMultiProviderAgent()`) is the recommended way to configure providers with flat, typed options and Zod validation. Custom providers can be created via `defineProvider()`. Providers expose `kind` and `capabilities` metadata for enriched discovery via `agents_discover`.
 
 ## Use this power when
 
@@ -74,7 +74,7 @@ Do not use this power when the task can be completed fully without external dele
 | Tool | Description |
 |------|-------------|
 | `bridge_health` | Check bridge readiness |
-| `agents_discover` | List available agents, optionally filter by capability. Response includes a `providers` field for agents that support multiple AI providers, listing each provider's `id` and `models`. |
+| `agents_discover` | List available agents, optionally filter by capability. Response includes a `providers` field for agents that support multiple AI providers, listing each provider's `id`, `models`, `kind`, `capabilities`, `displayName`, and `description`. |
 | `sessions_create` | Create a new agent session, returns a `sessionId`. Accepts `metadata.provider` to select a specific AI provider for the session, and `metadata.runtimeParams` for session-level parameter defaults. |
 | `sessions_prompt` | Send a prompt to an existing session. Accepts an optional `runtimeParams` field to override provider parameters (model, temperature, systemPrompt, etc.) for this specific prompt. |
 | `sessions_status` | Check the status of an existing session |
@@ -117,7 +117,7 @@ For one-shot tasks, use `tasks_delegate` instead of steps 3–6.
 - `id` — agent identifier
 - `capabilities` — list of agent capabilities
 - `status` — agent status (`ready`, `busy`, `unavailable`)
-- `providers` — (optional) array of available AI providers when the agent supports multiple providers, each with `id` and `models`
+- `providers` — (optional) array of available AI providers when the agent supports multiple providers, each with `id`, `models`, and enriched metadata (`kind`, `capabilities`, `displayName`, `description`)
 
 **`sessions_prompt` accepts:**
 - `sessionId` — target session
@@ -286,38 +286,31 @@ ProviderConfig.defaults  <  session metadata.runtimeParams  <  prompt-level runt
 ```typescript
 import {
   McpAgenticServer,
-  ProviderRegistry,
-  MultiProviderCompanionAgent,
-  OpenAIProvider,
-  AnthropicProvider,
-  GoogleGeminiProvider,
+  openAI,
+  anthropic,
+  gemini,
+  createMultiProviderAgent,
 } from '@stdiobus/mcp-agentic';
 
-// Create provider registry
-const registry = new ProviderRegistry();
-
-// Register providers (install only the SDKs you need)
-registry.register(new OpenAIProvider({
-  credentials: { apiKey: process.env.OPENAI_API_KEY! },
-  models: ['gpt-4o', 'gpt-4o-mini'],
-  defaults: { temperature: 0.7 },
-}));
-
-registry.register(new AnthropicProvider({
-  credentials: { apiKey: process.env.ANTHROPIC_API_KEY! },
-  models: ['claude-sonnet-4-20250514'],
-}));
-
-registry.register(new GoogleGeminiProvider({
-  credentials: { apiKey: process.env.GOOGLE_AI_API_KEY! },
-  models: ['gemini-2.0-flash'],
-}));
-
-// Create multi-provider agent
-const agent = new MultiProviderCompanionAgent({
+// Create multi-provider agent using Factory API
+const agent = createMultiProviderAgent({
   id: 'multi-ai',
   defaultProviderId: 'openai',
-  registry,
+  providers: [
+    openAI({
+      apiKey: process.env.OPENAI_API_KEY!,
+      models: ['gpt-4o', 'gpt-4o-mini'],
+      defaults: { temperature: 0.7 },
+    }),
+    anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+      models: ['claude-sonnet-4-20250514'],
+    }),
+    gemini({
+      apiKey: process.env.GOOGLE_AI_API_KEY!,
+      models: ['gemini-2.0-flash'],
+    }),
+  ],
   capabilities: ['chat', 'analysis'],
   systemPrompt: 'You are a helpful assistant.',
 });
@@ -349,9 +342,9 @@ agents_discover({ capability: "chat" })
     capabilities: ["chat", "analysis"],
     status: "ready",
     providers: [
-      { id: "openai", models: ["gpt-4o", "gpt-4o-mini"] },
-      { id: "anthropic", models: ["claude-sonnet-4-20250514"] },
-      { id: "google-gemini", models: ["gemini-2.0-flash"] }
+      { id: "openai", models: ["gpt-4o", "gpt-4o-mini"], kind: "llm", capabilities: { streaming: true, tools: true, vision: true, jsonMode: true }, displayName: "OpenAI" },
+      { id: "anthropic", models: ["claude-sonnet-4-20250514"], kind: "llm", capabilities: { streaming: true, tools: true, vision: true, jsonMode: false }, displayName: "Anthropic" },
+      { id: "google-gemini", models: ["gemini-2.0-flash"], kind: "llm", capabilities: { streaming: false, tools: false, vision: true, jsonMode: true }, displayName: "Google Gemini" }
     ]
   }]
 ```

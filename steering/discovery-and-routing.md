@@ -56,7 +56,7 @@ Agents expose their identity and capabilities through discovery:
 }
 ```
 
-When an agent supports multiple AI providers (e.g., `MultiProviderCompanionAgent`), the discovery response includes an optional `providers` field:
+When an agent supports multiple AI providers (e.g., `MultiProviderCompanionAgent`), the discovery response includes an optional `providers` field with enriched metadata:
 
 ```json
 {
@@ -64,12 +64,36 @@ When an agent supports multiple AI providers (e.g., `MultiProviderCompanionAgent
   "capabilities": ["general"],
   "status": "ready",
   "providers": [
-    { "id": "openai", "models": ["gpt-4o", "gpt-4o-mini"] },
-    { "id": "anthropic", "models": ["claude-sonnet-4-20250514"] },
-    { "id": "google-gemini", "models": ["gemini-2.0-flash"] }
+    {
+      "id": "openai",
+      "models": ["gpt-4o", "gpt-4o-mini"],
+      "kind": "llm",
+      "capabilities": { "streaming": true, "tools": true, "vision": true, "jsonMode": true },
+      "displayName": "OpenAI"
+    },
+    {
+      "id": "anthropic",
+      "models": ["claude-sonnet-4-20250514"],
+      "kind": "llm",
+      "capabilities": { "streaming": true, "tools": true, "vision": true, "jsonMode": false },
+      "displayName": "Anthropic"
+    },
+    {
+      "id": "google-gemini",
+      "models": ["gemini-2.0-flash"],
+      "kind": "llm",
+      "capabilities": { "streaming": false, "tools": false, "vision": true, "jsonMode": true },
+      "displayName": "Google Gemini"
+    }
   ]
 }
 ```
+
+Each provider entry may include:
+- `kind` — provider type (`'llm'`, `'embedding'`, `'reranker'`). Defaults to `'llm'` if not set.
+- `capabilities` — self-reported capabilities (`streaming`, `tools`, `vision`, `jsonMode`). Omitted if the provider has no capabilities metadata.
+- `displayName` — human-readable name (e.g., `"OpenAI"`, `"Google Gemini"`)
+- `description` — provider description
 
 The `providers` field is only present when the agent has a `ProviderRegistry` with registered providers. Agents without multi-provider support omit this field entirely.
 
