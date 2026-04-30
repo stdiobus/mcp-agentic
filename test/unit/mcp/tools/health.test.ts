@@ -6,7 +6,7 @@
 
 import { describe, expect, it, jest } from '@jest/globals';
 import * as fc from 'fast-check';
-import { handleBridgeHealth } from '../../../../src/mcp/tools/health.js';
+import { handleBridgeHealth, handleCombinedHealth } from '../../../../src/mcp/tools/health.js';
 import { createMockExecutor } from './_mockExecutor.js';
 
 describe('health handler — Property Tests', () => {
@@ -64,6 +64,37 @@ describe('health handler — Unit Tests', () => {
     const parsed = JSON.parse(result.content[0]!.text);
 
     expect(parsed.error).toBe('Executor down');
+    expect(parsed.code).toBe(-32603);
+    expect(parsed.data).toEqual({ type: 'INTERNAL', retryable: false });
+  });
+});
+
+// ─── handleCombinedHealth ─────────────────────────────────────────
+
+describe('handleCombinedHealth — Unit Tests', () => {
+  it('returns error response when inProcessExecutor.health() throws', async () => {
+    const inProcessExecutor = createMockExecutor({
+      health: jest.fn<any>().mockRejectedValue(new Error('In-process executor crashed')),
+    });
+
+    const result = await handleCombinedHealth(inProcessExecutor);
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.error).toBe('In-process executor crashed');
+    expect(parsed.code).toBe(-32603);
+    expect(parsed.data).toEqual({ type: 'INTERNAL', retryable: false });
+  });
+
+  it('returns error response when workerExecutor.health() throws', async () => {
+    const inProcessExecutor = createMockExecutor();
+    const workerExecutor = createMockExecutor({
+      health: jest.fn<any>().mockRejectedValue(new Error('Worker executor failed')),
+    });
+
+    const result = await handleCombinedHealth(inProcessExecutor, workerExecutor);
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.error).toBe('Worker executor failed');
     expect(parsed.code).toBe(-32603);
     expect(parsed.data).toEqual({ type: 'INTERNAL', retryable: false });
   });

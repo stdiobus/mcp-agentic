@@ -162,4 +162,42 @@ describe('tasks_delegate — Unit Tests', () => {
     // closeSession should NOT have been called (no session was created)
     expect(executor.closeSession).not.toHaveBeenCalled();
   });
+
+  it('cleanup on prompt error — error response includes sessionId', async () => {
+    const executor = createMockExecutor({
+      prompt: jest.fn<any>().mockRejectedValue(new Error('Agent crashed')),
+    });
+
+    const result = await handleTasksDelegate(executor, { prompt: 'test' });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.sessionId).toBe('sess-1');
+    expect(parsed.error).toBe('Agent crashed');
+    expect(parsed.code).toBe(-32603);
+    expect(executor.closeSession).toHaveBeenCalledWith('sess-1', 'task-failed');
+  });
+
+  it('cleanup failure — logs to stderr when closeSession also throws', async () => {
+    const stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const executor = createMockExecutor({
+      prompt: jest.fn<any>().mockRejectedValue(new Error('Agent crashed')),
+      closeSession: jest.fn<any>().mockRejectedValue(new Error('Cleanup also failed')),
+    });
+
+    const result = await handleTasksDelegate(executor, { prompt: 'test' });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.sessionId).toBe('sess-1');
+    expect(parsed.error).toBe('Agent crashed');
+
+    // Verify cleanup failure was logged to stderr
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[tasks_delegate] cleanup failed for session sess-1: Cleanup also failed'),
+    );
+
+    stderrSpy.mockRestore();
+  });
 });

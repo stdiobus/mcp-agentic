@@ -688,3 +688,422 @@ describe('McpAgenticServer — Input Size Validation', () => {
     await server.close();
   });
 });
+
+// ─── Constructor config.agents Tests ──────────────────────────────
+
+describe('McpAgenticServer — Constructor config.agents', () => {
+  it('pre-registers agents from config.agents', async () => {
+    const agent = createMockAgent('pre-reg-agent', ['test'], {
+      onSessionCreate: jest.fn<any>().mockResolvedValue(undefined),
+    });
+
+    const server = new McpAgenticServer({ agents: [agent], silent: true });
+    await server.start();
+
+    // The agent should be discoverable via sessions_create
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const result = await sessionsCreateTool.callback({ agentId: 'pre-reg-agent' });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.agentId).toBe('pre-reg-agent');
+
+    await server.close();
+  });
+});
+
+// ─── bridge_health and agents_discover Callback Tests ─────────────
+
+describe('McpAgenticServer — bridge_health and agents_discover callbacks', () => {
+  it('bridge_health callback returns health info', async () => {
+    const agent = createMockAgent('health-agent', ['test']);
+
+    const server = new McpAgenticServer({ silent: true });
+    server.register(agent);
+    await server.start();
+
+    const bridgeHealthTool = registeredTools.get('bridge_health')!;
+    const result = await bridgeHealthTool.callback({});
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(parsed.healthy).toBeDefined();
+    expect(parsed.agents).toBeDefined();
+    expect(parsed.sessions).toBeDefined();
+
+    await server.close();
+  });
+
+  it('agents_discover callback returns agent list', async () => {
+    const agent = createMockAgent('discover-agent', ['chat']);
+
+    const server = new McpAgenticServer({ silent: true });
+    server.register(agent);
+    await server.start();
+
+    const agentsDiscoverTool = registeredTools.get('agents_discover')!;
+    const result = await agentsDiscoverTool.callback({});
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(parsed.agents).toBeDefined();
+    expect(parsed.agents.length).toBeGreaterThanOrEqual(1);
+    expect(parsed.agents.some((a: any) => a.id === 'discover-agent')).toBe(true);
+
+    await server.close();
+  });
+});
+
+// ─── Worker Fallback Tests ────────────────────────────────────────
+
+describe('McpAgenticServer — resolveExecutor worker fallback', () => {
+  it('resolveExecutor falls back to worker when agent not found in in-process (cache miss)', async () => {
+    // Register only a worker — no in-process agent with this ID
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-only-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // sessions_create with the worker agent ID should resolve to worker executor
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const result = await sessionsCreateTool.callback({ agentId: 'worker-only-agent' });
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Worker's bus.request should have been called for session/new
+    const sessionNewCalls = mockBusInstance.request.mock.calls.filter(
+      (call: any[]) => call[0] === 'session/new',
+    );
+    expect(sessionNewCalls).toHaveLength(1);
+    expect(parsed.sessionId).toBe('worker-session-id');
+
+    await server.close();
+  });
+
+  it('resolveExecutor falls back to worker after cache invalidation', async () => {
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // Register a new in-process agent to invalidate the cache
+    const inProcessAgent = createMockAgent('other-agent', ['test'], {
+      onSessionCreate: jest.fn<any>().mockResolvedValue(undefined),
+    });
+    server.register(inProcessAgent);
+
+    // Now request the worker-only agent — cache is cleared, must discover
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const result = await sessionsCreateTool.callback({ agentId: 'worker-agent' });
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Should have resolved to worker
+    expect(parsed.sessionId).toBe('worker-session-id');
+
+    await server.close();
+  });
+
+  it('resolveExecutor falls through to in-process when agent not found anywhere', async () => {
+    // Register a worker but request a non-existent agent ID
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // Invalidate cache so resolveExecutor goes through discover path
+    server.register(createMockAgent('dummy', []));
+
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    // Request an agent that doesn't exist in either executor
+    const result = await sessionsCreateTool.callback({ agentId: 'nonexistent-agent' });
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Should fall through to in-process which returns an error response
+    expect(parsed.error).toBeDefined();
+
+    await server.close();
+  });
+
+  it('resolveExecutor without agentId returns worker when no in-process agents', async () => {
+    // Server with only a worker, no in-process agents, no defaultAgentId
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // sessions_create without agentId — should resolve to worker since no in-process agents
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const result = await sessionsCreateTool.callback({});
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Worker should have been used
+    expect(parsed.sessionId).toBe('worker-session-id');
+
+    await server.close();
+  });
+
+  it('resolveExecutor without agentId returns in-process when no agents anywhere', async () => {
+    // Server with no agents at all
+    const server = new McpAgenticServer({ silent: true });
+
+    await server.start();
+
+    // sessions_create without agentId — should fall through to in-process (which errors)
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const result = await sessionsCreateTool.callback({});
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Should return an error since no agents are registered
+    expect(parsed.error).toBeDefined();
+
+    await server.close();
+  });
+});
+
+// ─── resolveExecutorForSession Worker Fallback Tests ──────────────
+
+describe('McpAgenticServer — resolveExecutorForSession worker fallback', () => {
+  it('resolveExecutorForSession falls back to worker when session not in in-process', async () => {
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // Create a session via worker
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'worker-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Now call sessions_status with the worker session ID
+    // resolveExecutorForSession should try in-process (fail), then find it in worker
+    const sessionsStatusTool = registeredTools.get('sessions_status')!;
+    const statusResult = await sessionsStatusTool.callback({ sessionId });
+    const parsed = JSON.parse(statusResult.content[0].text);
+
+    // Worker session should be found and status returned
+    expect(parsed.sessionId).toBe(sessionId);
+    expect(parsed.status).toBe('active');
+
+    await server.close();
+  });
+
+  it('resolveExecutorForSession falls back to worker for sessions_close', async () => {
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // Create a session via worker
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'worker-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Close the worker session — resolveExecutorForSession should find it in worker
+    const sessionsCloseTool = registeredTools.get('sessions_close')!;
+    const closeResult = await sessionsCloseTool.callback({ sessionId });
+    const parsed = JSON.parse(closeResult.content[0].text);
+
+    expect(parsed.closed).toBe(true);
+    expect(parsed.sessionId).toBe(sessionId);
+
+    await server.close();
+  });
+
+  it('resolveExecutorForSession falls back to worker for sessions_cancel', async () => {
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    await server.start();
+
+    // Create a session via worker
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'worker-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Cancel on the worker session — resolveExecutorForSession should find it in worker
+    const sessionsCancelTool = registeredTools.get('sessions_cancel')!;
+    const cancelResult = await sessionsCancelTool.callback({ sessionId });
+    const parsed = JSON.parse(cancelResult.content[0].text);
+
+    expect(parsed.cancelled).toBe(true);
+    expect(parsed.sessionId).toBe(sessionId);
+
+    await server.close();
+  });
+});
+
+// ─── Tool Handler Callback Tests ──────────────────────────────────
+
+describe('McpAgenticServer — Tool handler callbacks', () => {
+  it('sessions_status callback resolves executor and returns session status', async () => {
+    const agent = createMockAgent('status-agent', ['test'], {
+      onSessionCreate: jest.fn<any>().mockResolvedValue(undefined),
+    });
+
+    const server = new McpAgenticServer({ silent: true });
+    server.register(agent);
+    await server.start();
+
+    // Create a session
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'status-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Call sessions_status
+    const sessionsStatusTool = registeredTools.get('sessions_status')!;
+    const statusResult = await sessionsStatusTool.callback({ sessionId });
+    const parsed = JSON.parse(statusResult.content[0].text);
+
+    expect(parsed.sessionId).toBe(sessionId);
+    expect(parsed.agentId).toBe('status-agent');
+    expect(parsed.status).toBe('active');
+
+    await server.close();
+  });
+
+  it('sessions_cancel callback resolves executor and cancels', async () => {
+    const agent = createMockAgent('cancel-agent', ['test'], {
+      onSessionCreate: jest.fn<any>().mockResolvedValue(undefined),
+      prompt: jest.fn<any>().mockResolvedValue({ text: 'ok', stopReason: 'end_turn' }),
+    });
+
+    const server = new McpAgenticServer({ silent: true });
+    server.register(agent);
+    await server.start();
+
+    // Create a session
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'cancel-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Call sessions_cancel
+    const sessionsCancelTool = registeredTools.get('sessions_cancel')!;
+    const cancelResult = await sessionsCancelTool.callback({ sessionId });
+    const parsed = JSON.parse(cancelResult.content[0].text);
+
+    expect(parsed.cancelled).toBe(true);
+    expect(parsed.sessionId).toBe(sessionId);
+
+    await server.close();
+  });
+
+  it('sessions_close callback resolves executor and closes session', async () => {
+    const agent = createMockAgent('close-agent', ['test'], {
+      onSessionCreate: jest.fn<any>().mockResolvedValue(undefined),
+      onSessionClose: jest.fn<any>().mockResolvedValue(undefined),
+    });
+
+    const server = new McpAgenticServer({ silent: true });
+    server.register(agent);
+    await server.start();
+
+    // Create a session
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'close-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Close the session
+    const sessionsCloseTool = registeredTools.get('sessions_close')!;
+    const closeResult = await sessionsCloseTool.callback({ sessionId, reason: 'done' });
+    const parsed = JSON.parse(closeResult.content[0].text);
+
+    expect(parsed.closed).toBe(true);
+    expect(parsed.sessionId).toBe(sessionId);
+
+    // Verify onSessionClose was called
+    expect(agent.onSessionClose).toHaveBeenCalledTimes(1);
+
+    await server.close();
+  });
+});
+
+// ─── injectPromptRuntimeParams / applyRuntimeParamsToAgent Edge Cases ─
+
+describe('McpAgenticServer — RuntimeParams edge cases', () => {
+  it('injectPromptRuntimeParams skips when executor is WorkerExecutor (not InProcessExecutor)', async () => {
+    // Set up a server with only a worker — no in-process agents
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    // Mock bus.request to handle session/new and session/prompt
+    mockBusInstance.request
+      .mockResolvedValueOnce({ sessionId: 'w-session-1' })  // session/new
+      .mockResolvedValueOnce({ text: 'worker response', stopReason: 'end_turn' }); // session/prompt
+
+    await server.start();
+
+    // Create a session via worker
+    const sessionsCreateTool = registeredTools.get('sessions_create')!;
+    const createResult = await sessionsCreateTool.callback({ agentId: 'worker-agent' });
+    const sessionId = JSON.parse(createResult.content[0].text).sessionId;
+
+    // Send prompt with runtimeParams — should NOT throw even though worker
+    // doesn't support setPromptRuntimeParams. The injectPromptRuntimeParams
+    // method should silently skip because executor is not InProcessExecutor.
+    const sessionsPromptTool = registeredTools.get('sessions_prompt')!;
+    const result = await sessionsPromptTool.callback({
+      sessionId,
+      prompt: 'Hello',
+      runtimeParams: { temperature: 0.7 },
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.text).toBe('worker response');
+
+    await server.close();
+  });
+
+  it('applyRuntimeParamsToAgent skips when agent not found in executor', async () => {
+    // Create a plain agent (no setPromptRuntimeParams)
+    const agent = createMockAgent('ephemeral-agent', ['test'], {
+      onSessionCreate: jest.fn<any>().mockResolvedValue(undefined),
+      prompt: jest.fn<any>().mockResolvedValue({ text: 'ok', stopReason: 'end_turn' }),
+    });
+
+    const server = new McpAgenticServer({ silent: true });
+    server.register(agent);
+    await server.start();
+
+    // Use tasks_delegate with runtimeParams — the beforePrompt hook calls
+    // applyRuntimeParamsToAgent. Since the agent doesn't have setPromptRuntimeParams,
+    // it should silently skip.
+    const tasksDelegateTool = registeredTools.get('tasks_delegate')!;
+    const result = await tasksDelegateTool.callback({
+      prompt: 'Hello',
+      agentId: 'ephemeral-agent',
+      runtimeParams: { temperature: 0.9 },
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.text).toBe('ok');
+
+    // Agent's prompt should still have been called
+    expect(agent.prompt).toHaveBeenCalledTimes(1);
+
+    await server.close();
+  });
+
+  it('applyRuntimeParamsToAgent skips for WorkerExecutor in tasks_delegate', async () => {
+    const server = new McpAgenticServer({ silent: true });
+    server.registerWorker({ id: 'worker-agent', command: 'node', args: ['w.js'] });
+
+    // Mock bus.request to handle session/new, session/prompt, and session/close
+    mockBusInstance.request
+      .mockResolvedValueOnce({ sessionId: 'w-delegate-session' })  // session/new
+      .mockResolvedValueOnce({ text: 'delegated response', stopReason: 'end_turn' }) // session/prompt
+      .mockResolvedValueOnce(undefined); // session/close
+
+    await server.start();
+
+    // tasks_delegate with runtimeParams on a worker agent
+    // applyRuntimeParamsToAgent should skip because executor is WorkerExecutor
+    const tasksDelegateTool = registeredTools.get('tasks_delegate')!;
+    const result = await tasksDelegateTool.callback({
+      prompt: 'Summarize',
+      agentId: 'worker-agent',
+      runtimeParams: { temperature: 0.5 },
+    });
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.text).toBe('delegated response');
+
+    await server.close();
+  });
+});

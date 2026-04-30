@@ -159,4 +159,67 @@ describe('sessions handlers — Unit Tests', () => {
     expect(parsed.error).toContain('Agent not found');
     expect(parsed.code).toBe(-32002); // UPSTREAM_ERROR
   });
+
+  it('handleSessionsPrompt returns error response when executor.prompt() throws', async () => {
+    const executor = createMockExecutor({
+      prompt: jest.fn<any>().mockRejectedValue(
+        BridgeError.timeout('Prompt timed out'),
+      ),
+    });
+
+    const result = await handleSessionsPrompt(executor, {
+      sessionId: 'sess-1',
+      prompt: 'Hello',
+    });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.error).toBe('Prompt timed out');
+    expect(parsed.code).toBe(-32001); // TIMEOUT_ERROR
+    expect(parsed.data).toEqual(expect.objectContaining({ type: 'TIMEOUT', retryable: true }));
+  });
+
+  it('handleSessionsStatus returns error response when executor.getSession() throws', async () => {
+    const executor = createMockExecutor({
+      getSession: jest.fn<any>().mockRejectedValue(
+        BridgeError.upstream('Session not found: sess-bad'),
+      ),
+    });
+
+    const result = await handleSessionsStatus(executor, { sessionId: 'sess-bad' });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.error).toBe('Session not found: sess-bad');
+    expect(parsed.code).toBe(-32002); // UPSTREAM_ERROR
+    expect(parsed.data).toEqual(expect.objectContaining({ type: 'UPSTREAM' }));
+  });
+
+  it('handleSessionsClose returns error response when executor.closeSession() throws', async () => {
+    const executor = createMockExecutor({
+      closeSession: jest.fn<any>().mockRejectedValue(
+        BridgeError.upstream('Session not found: sess-gone'),
+      ),
+    });
+
+    const result = await handleSessionsClose(executor, { sessionId: 'sess-gone' });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.error).toBe('Session not found: sess-gone');
+    expect(parsed.code).toBe(-32002); // UPSTREAM_ERROR
+    expect(parsed.data).toEqual(expect.objectContaining({ type: 'UPSTREAM' }));
+  });
+
+  it('handleSessionsCancel returns error response when executor.cancel() throws', async () => {
+    const executor = createMockExecutor({
+      cancel: jest.fn<any>().mockRejectedValue(
+        BridgeError.upstream('No in-flight request to cancel'),
+      ),
+    });
+
+    const result = await handleSessionsCancel(executor, { sessionId: 'sess-1' });
+    const parsed = JSON.parse(result.content[0]!.text);
+
+    expect(parsed.error).toBe('No in-flight request to cancel');
+    expect(parsed.code).toBe(-32002); // UPSTREAM_ERROR
+    expect(parsed.data).toEqual(expect.objectContaining({ type: 'UPSTREAM' }));
+  });
 });

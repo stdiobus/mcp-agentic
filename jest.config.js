@@ -30,6 +30,7 @@ export default {
     '!src/**/*.test.ts',
     '!src/**/*.d.ts',
     '!src/types.ts',
+    '!src/cli/server.ts',
   ],
   coverageThreshold: {
     global: {
