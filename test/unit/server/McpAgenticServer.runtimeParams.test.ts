@@ -8,7 +8,7 @@
  * Integration tests for runtimeParams flow through McpAgenticServer.
  *
  * Verifies that prompt-level runtimeParams passed via sessions_prompt and
- * tasks_delegate are correctly injected into MultiProviderCompanionAgent
+ * tasks_delegate are correctly injected into MultiProviderAgent
  * via the duck-typing setPromptRuntimeParams mechanism.
  *
  * Feature: multi-provider-agents
@@ -21,7 +21,7 @@ import type { AIProvider, AIProviderResult, RuntimeParams, ChatMessage } from '.
 // ─── Module-level variables populated in beforeAll ────────────────
 
 let McpAgenticServer: typeof import('../../../src/server/McpAgenticServer.js').McpAgenticServer;
-let MultiProviderCompanionAgent: typeof import('../../../src/agent/MultiProviderCompanionAgent.js').MultiProviderCompanionAgent;
+let MultiProviderAgent: typeof import('../../../src/agent/MultiProviderAgent.js').MultiProviderAgent;
 let ProviderRegistry: typeof import('../../../src/provider/ProviderRegistry.js').ProviderRegistry;
 
 let mockRegisterTool: jest.Mock;
@@ -54,13 +54,13 @@ beforeAll(async () => {
   const mcpServerModule = await import('@modelcontextprotocol/sdk/server/mcp.js');
   const mcpStdioModule = await import('@modelcontextprotocol/sdk/server/stdio.js');
   const mcpAgenticModule = await import('../../../src/server/McpAgenticServer.js');
-  const multiProviderModule = await import('../../../src/agent/MultiProviderCompanionAgent.js');
+  const multiProviderModule = await import('../../../src/agent/MultiProviderAgent.js');
   const registryModule = await import('../../../src/provider/ProviderRegistry.js');
 
   MockMcpServerClass = mcpServerModule.McpServer as unknown as jest.Mock;
   MockStdioTransport = mcpStdioModule.StdioServerTransport as unknown as jest.Mock;
   McpAgenticServer = mcpAgenticModule.McpAgenticServer;
-  MultiProviderCompanionAgent = multiProviderModule.MultiProviderCompanionAgent;
+  MultiProviderAgent = multiProviderModule.MultiProviderAgent;
   ProviderRegistry = registryModule.ProviderRegistry;
 });
 
@@ -100,13 +100,13 @@ function createMockProvider(id: string): AIProvider & { completeCalls: Array<{ m
   };
 }
 
-/** Set up a McpAgenticServer with a MultiProviderCompanionAgent and return test utilities. */
+/** Set up a McpAgenticServer with a MultiProviderAgent and return test utilities. */
 async function setupServer(options?: { systemPrompt?: string; defaults?: RuntimeParams }) {
   const registry = new ProviderRegistry();
   const mockProvider = createMockProvider('test-provider');
   registry.register(mockProvider);
 
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: 'multi-agent',
     defaultProviderId: 'test-provider',
     registry,

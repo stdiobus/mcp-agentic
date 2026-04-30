@@ -13,13 +13,18 @@
  * Validates: Requirements 9.1, 9.2, 9.4
  */
 
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import * as fc from 'fast-check';
 import { handleCombinedDiscover } from '../../../../src/mcp/tools/agents.js';
 import { InProcessExecutor } from '../../../../src/executor/InProcessExecutor.js';
 import { ProviderRegistry } from '../../../../src/provider/ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../../../src/agent/MultiProviderCompanionAgent.js';
-import type { AIProvider, AIProviderResult, ProviderKind, ProviderCapabilities } from '../../../../src/provider/AIProvider.js';
+import { MultiProviderAgent } from '../../../../src/agent/MultiProviderAgent.js';
+import type {
+  AIProvider,
+  AIProviderResult,
+  ProviderCapabilities,
+  ProviderKind,
+} from '../../../../src/provider/AIProvider.js';
 import type { AgentInfo } from '../../../../src/executor/types.js';
 import { createMockExecutor } from './_mockExecutor.js';
 
@@ -111,8 +116,8 @@ describe('agents_discover — Provider enrichment', () => {
             const providers = providerSpecs.map(([id, models]) => createMockProvider(id, models));
             const registry = createRegistry(...providers);
 
-            // Create a MultiProviderCompanionAgent with the registry
-            const agent = new MultiProviderCompanionAgent({
+            // Create a MultiProviderAgent with the registry
+            const agent = new MultiProviderAgent({
               id: 'multi-agent',
               defaultProviderId: providers[0]!.id,
               registry,
@@ -175,7 +180,7 @@ describe('agents_discover — Provider enrichment', () => {
             const initialProviders = initialSpecs.map(([id, models]) => createMockProvider(id, models));
             const registry = createRegistry(...initialProviders);
 
-            const agent = new MultiProviderCompanionAgent({
+            const agent = new MultiProviderAgent({
               id: 'multi-agent',
               defaultProviderId: initialProviders[0]!.id,
               registry,
@@ -224,7 +229,7 @@ describe('agents_discover — Provider enrichment', () => {
       const anthropic = createMockProvider('anthropic', ['claude-sonnet-4-20250514']);
       const registry = createRegistry(openai, anthropic);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'openai',
         registry,
@@ -298,7 +303,7 @@ describe('agents_discover — Provider enrichment', () => {
       const openai = createMockProvider('openai', ['gpt-4']);
       const registry = createRegistry(openai);
 
-      const multiAgent = new MultiProviderCompanionAgent({
+      const multiAgent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'openai',
         registry,
@@ -338,7 +343,7 @@ describe('agents_discover — Provider enrichment', () => {
       const dummyProvider = createMockProvider('dummy', ['m1']);
       registry.register(dummyProvider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'dummy',
         registry,
@@ -372,7 +377,7 @@ describe('agents_discover — Provider enrichment', () => {
       });
       const registry = createRegistry(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'openai',
         registry,
@@ -404,7 +409,7 @@ describe('agents_discover — Provider enrichment', () => {
       const provider = createMockProvider('custom', ['custom-model']);
       const registry = createRegistry(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'custom',
         registry,
@@ -433,7 +438,7 @@ describe('agents_discover — Provider enrichment', () => {
       const provider = createMockProvider('bare', ['model-a']);
       const registry = createRegistry(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'bare',
         registry,
@@ -466,7 +471,7 @@ describe('agents_discover — Provider enrichment', () => {
       });
       const registry = createRegistry(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'test',
         registry,
@@ -499,7 +504,7 @@ describe('agents_discover — Provider enrichment', () => {
       const bare = createMockProvider('custom', ['custom-model']);
       const registry = createRegistry(enriched, bare);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'openai',
         registry,
@@ -542,7 +547,7 @@ describe('agents_discover — Provider enrichment', () => {
       });
       const registry = createRegistry(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'anthropic',
         registry,
@@ -572,7 +577,7 @@ describe('agents_discover — Provider enrichment', () => {
       });
       const registry = createRegistry(provider);
 
-      const agent = new MultiProviderCompanionAgent({
+      const agent = new MultiProviderAgent({
         id: 'multi-agent',
         defaultProviderId: 'test',
         registry,

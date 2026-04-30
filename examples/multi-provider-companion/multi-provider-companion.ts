@@ -137,7 +137,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   McpAgenticServer,
-  MultiProviderCompanionAgent,
+  MultiProviderAgent,
   ProviderRegistry,
   OpenAIProvider,
   AnthropicProvider,
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
     : firstProviderId;
 
   // Create the multi-provider agent
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: name,
     defaultProviderId,
     registry,

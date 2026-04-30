@@ -30,19 +30,16 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-import type { AgentHandler, AgentResult, PromptOpts } from '../../src/agent/AgentHandler.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import type { AgentHandler, AgentResult } from '../../src/agent/AgentHandler.js';
 import { InProcessExecutor } from '../../src/executor/InProcessExecutor.js';
 import { mapErrorToMCP } from '../../src/errors/error-mapper.js';
 import {
+  AgentsDiscoverArgsSchema,
+  SessionsCloseArgsSchema,
   SessionsCreateArgsSchema,
   SessionsPromptArgsSchema,
   SessionsStatusArgsSchema,
-  SessionsCloseArgsSchema,
-  AgentsDiscoverArgsSchema,
   TasksDelegateArgsSchema,
 } from '../../src/types.js';
 

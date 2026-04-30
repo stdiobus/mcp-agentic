@@ -9,7 +9,7 @@
  *
  * These tests exercise real AI provider APIs (OpenAI, Anthropic, Google Gemini)
  * through the full MCP Agentic pipeline:
- *   MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → Provider SDK → API
+ *   MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → Provider SDK → API
  *
  * Tests are skipped when the corresponding API key environment variable is not set.
  * They are NOT run in CI by default — only locally with valid API keys.

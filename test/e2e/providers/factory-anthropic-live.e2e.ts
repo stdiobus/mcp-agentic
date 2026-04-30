@@ -10,7 +10,7 @@
  * Uses the new Factory API (`anthropic()` + `createMultiProviderAgent()`) instead of
  * the class-based API (`AnthropicProvider.create()` + manual `ProviderRegistry` wiring).
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → Anthropic SDK → Anthropic API
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → Anthropic SDK → Anthropic API
  *
  * Requires: ANTHROPIC_API_KEY environment variable.
  * Skipped automatically when the key is not set.

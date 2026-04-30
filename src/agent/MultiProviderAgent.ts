@@ -5,13 +5,13 @@
  */
 
 /**
- * MultiProviderCompanionAgent — Agent that delegates to any registered AI provider.
+ * MultiProviderAgent — Agent that delegates to any registered AI provider.
  *
  * Implements the {@link AgentHandler} interface without modifications.
  * Supports dynamic provider selection per session and runtime parameter
  * overrides at both session and prompt levels.
  *
- * @module agent/MultiProviderCompanionAgent
+ * @module agent/MultiProviderAgent
  */
 
 import { BridgeError } from '../errors/BridgeError.js';
@@ -23,9 +23,9 @@ import type { AgentHandler, AgentResult, PromptOpts } from './AgentHandler.js';
 // ── Configuration ───────────────────────────────────────────────
 
 /**
- * Configuration for constructing a {@link MultiProviderCompanionAgent}.
+ * Configuration for constructing a {@link MultiProviderAgent}.
  */
-export interface MultiProviderCompanionConfig {
+export interface MultiProviderAgentConfig {
   /** Unique agent identifier. */
   id: string;
   /** Default provider id to use when no override is specified. */
@@ -35,9 +35,9 @@ export interface MultiProviderCompanionConfig {
   /** Optional list of capabilities this agent supports. */
   capabilities?: string[];
   /** Default system prompt applied to all sessions unless overridden. */
-  systemPrompt?: string;
+  systemPrompt?: string | undefined;
   /** Provider-level default RuntimeParams. */
-  defaults?: RuntimeParams;
+  defaults?: RuntimeParams | undefined;
 }
 
 // ── Internal session state ──────────────────────────────────────
@@ -54,7 +54,7 @@ interface SessionState {
   pendingPromptParams: RuntimeParams | undefined;
 }
 
-// ── MultiProviderCompanionAgent ─────────────────────────────────
+// ── MultiProviderAgent ─────────────────────────────────
 
 /**
  * Agent that delegates AI generation to any registered provider.
@@ -63,7 +63,7 @@ interface SessionState {
  * Provides additional methods for prompt-level runtime params and
  * provider registry access (used by McpAgenticServer for discovery).
  */
-export class MultiProviderCompanionAgent implements AgentHandler {
+export class MultiProviderAgent implements AgentHandler {
   readonly id: string;
   readonly capabilities?: string[];
 
@@ -73,7 +73,7 @@ export class MultiProviderCompanionAgent implements AgentHandler {
   private readonly defaults: RuntimeParams;
   private readonly sessions = new Map<string, SessionState>();
 
-  constructor(config: MultiProviderCompanionConfig) {
+  constructor(config: MultiProviderAgentConfig) {
     this.id = config.id;
     if (config.capabilities !== undefined) {
       this.capabilities = config.capabilities;

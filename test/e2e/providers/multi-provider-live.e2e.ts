@@ -7,7 +7,7 @@
 /**
  * E2E Test: Multi-provider switching — Multiple providers in one server.
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → [OpenAI | Anthropic | Gemini]
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → [OpenAI | Anthropic | Gemini]
  *
  * Requires: At least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_AI_API_KEY.
  * Skipped automatically when none are set.
@@ -27,7 +27,7 @@ import { OpenAIProvider } from '../../../src/provider/providers/OpenAIProvider.j
 import { AnthropicProvider } from '../../../src/provider/providers/AnthropicProvider.js';
 import { GoogleGeminiProvider } from '../../../src/provider/providers/GoogleGeminiProvider.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from 'src/agent/MultiProviderAgent';
 import type { TestServerContext } from './_helpers.js';
 
 // ── Skip if no API keys ─────────────────────────────────────────
@@ -83,7 +83,7 @@ async function setup(): Promise<TestServerContext & { availableProviders: string
     if (!defaultProviderId) defaultProviderId = 'google-gemini';
   }
 
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: 'multi-provider-agent',
     defaultProviderId,
     registry,

@@ -15,7 +15,7 @@
  * - Empty providers → BridgeError CONFIG
  * - Duplicate provider id → BridgeError CONFIG
  * - defaultProviderId not found → BridgeError CONFIG with available ids
- * - Returned agent is instance of MultiProviderCompanionAgent
+ * - Returned agent is instance of MultiProviderAgent
  * - Optional fields (capabilities, systemPrompt, defaults) are passed through
  *
  * **Validates: Requirements 6.1–6.7**
@@ -24,7 +24,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import * as fc from 'fast-check';
 import { createMultiProviderAgent } from '../../../../src/provider/factories/createMultiProviderAgent.js';
-import { MultiProviderCompanionAgent } from '../../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from '../../../../src/agent/MultiProviderAgent.js';
 import { BridgeError } from '../../../../src/errors/BridgeError.js';
 import type { AIProvider, AIProviderResult, RuntimeParams } from '../../../../src/provider/AIProvider.js';
 
@@ -114,7 +114,7 @@ describe('Property 5: createMultiProviderAgent — correct wiring', () => {
     );
   });
 
-  it('property: returned agent is an instance of MultiProviderCompanionAgent', () => {
+  it('property: returned agent is an instance of MultiProviderAgent', () => {
     fc.assert(
       fc.property(
         arbUniqueProviderIds,
@@ -127,7 +127,7 @@ describe('Property 5: createMultiProviderAgent — correct wiring', () => {
             defaultProviderId: ids[0]!,
           });
 
-          expect(agent).toBeInstanceOf(MultiProviderCompanionAgent);
+          expect(agent).toBeInstanceOf(MultiProviderAgent);
         },
       ),
       { numRuns: 100 },
@@ -274,7 +274,7 @@ describe('createMultiProviderAgent', () => {
         defaultProviderId: 'openai',
       });
 
-      expect(agent).toBeInstanceOf(MultiProviderCompanionAgent);
+      expect(agent).toBeInstanceOf(MultiProviderAgent);
       expect(agent.id).toBe('my-agent');
 
       const registry = agent.getProviderRegistry();
@@ -292,7 +292,7 @@ describe('createMultiProviderAgent', () => {
         defaultProviderId: 'openai',
       });
 
-      expect(agent).toBeInstanceOf(MultiProviderCompanionAgent);
+      expect(agent).toBeInstanceOf(MultiProviderAgent);
       expect(agent.getProviderRegistry().list()).toHaveLength(1);
     });
 
@@ -447,7 +447,7 @@ describe('createMultiProviderAgent', () => {
   });
 
   describe('returned agent type', () => {
-    it('should return an instance of MultiProviderCompanionAgent', () => {
+    it('should return an instance of MultiProviderAgent', () => {
       const openai = createMockProvider('openai');
 
       const agent = createMultiProviderAgent({
@@ -456,7 +456,7 @@ describe('createMultiProviderAgent', () => {
         defaultProviderId: 'openai',
       });
 
-      expect(agent).toBeInstanceOf(MultiProviderCompanionAgent);
+      expect(agent).toBeInstanceOf(MultiProviderAgent);
     });
 
     it('should return an agent that implements AgentHandler (has prompt, onSessionCreate, onSessionClose)', () => {

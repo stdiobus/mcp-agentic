@@ -4,14 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { jest, describe, it, expect } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import * as fc from 'fast-check';
 import {
+  handleSessionsCancel,
+  handleSessionsClose,
   handleSessionsCreate,
   handleSessionsPrompt,
   handleSessionsStatus,
-  handleSessionsClose,
-  handleSessionsCancel,
 } from '../../../../src/mcp/tools/sessions.js';
 import { BridgeError } from '../../../../src/errors/BridgeError.js';
 import { createMockExecutor } from './_mockExecutor.js';

@@ -70,8 +70,8 @@ export { GoogleGeminiProvider } from './provider/index.js';
 
 // ─── Multi-Provider Agent ────────────────────────────────────────
 
-export { MultiProviderCompanionAgent } from './agent/MultiProviderCompanionAgent.js';
-export type { MultiProviderCompanionConfig } from './agent/MultiProviderCompanionAgent.js';
+export { MultiProviderAgent } from './agent/MultiProviderAgent.js';
+export type { MultiProviderAgentConfig } from './agent/MultiProviderAgent.js';
 
 // ─── Provider Factory API (NEW) ──────────────────────────────────
 

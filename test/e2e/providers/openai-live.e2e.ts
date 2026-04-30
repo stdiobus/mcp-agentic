@@ -7,7 +7,7 @@
 /**
  * E2E Test: OpenAI Provider — Real API calls through full MCP Agentic pipeline.
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → OpenAI SDK → OpenAI API
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → OpenAI SDK → OpenAI API
  *
  * Requires: OPENAI_API_KEY environment variable.
  * Skipped automatically when the key is not set.
@@ -27,7 +27,7 @@ import {
 } from './_helpers.js';
 import { OpenAIProvider } from '../../../src/provider/providers/OpenAIProvider.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from 'src/agent/MultiProviderAgent';
 
 // ── Skip if no API key ──────────────────────────────────────────
 
@@ -45,7 +45,7 @@ async function setup() {
   const registry = new ProviderRegistry();
   registry.register(provider);
 
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: 'openai-agent',
     defaultProviderId: 'openai',
     registry,

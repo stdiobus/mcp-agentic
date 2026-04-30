@@ -9,7 +9,7 @@
  *
  * A fully configurable AI companion powered by OpenAI via the official
  * `openai` SDK, exposed as an MCP Agentic server over stdio. Uses the
- * {@link MultiProviderCompanionAgent} with a single OpenAI provider for
+ * {@link MultiProviderAgent} with a single OpenAI provider for
  * full runtime parameter control through MCP tools.
  *
  * Configuration is split by concern:
@@ -107,7 +107,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   McpAgenticServer,
-  MultiProviderCompanionAgent,
+  MultiProviderAgent,
   ProviderRegistry,
   OpenAIProvider,
 } from '../../src/index.js';
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
   registry.register(openaiProvider);
 
   // Create the multi-provider agent (single provider in this case)
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: config.name,
     defaultProviderId: 'openai',
     registry,

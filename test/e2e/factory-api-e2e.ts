@@ -7,7 +7,7 @@
 /**
  * E2E Test: Factory API — Offline tests through full MCP pipeline.
  *
- * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderCompanionAgent → Mock providers
+ * Pipeline: MCP Client → InMemoryTransport → McpAgenticServer → MultiProviderAgent → Mock providers
  *
  * Standalone script — no Jest, no real API keys. Run with:
  *   npx tsx test/e2e/factory-api-e2e.ts

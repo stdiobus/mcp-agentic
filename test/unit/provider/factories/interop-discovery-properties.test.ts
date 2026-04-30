@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { handleCombinedDiscover } from '../../../../src/mcp/tools/agents.js';
 import { InProcessExecutor } from '../../../../src/executor/InProcessExecutor.js';
 import { ProviderRegistry } from '../../../../src/provider/ProviderRegistry.js';
-import { MultiProviderCompanionAgent } from '../../../../src/agent/MultiProviderCompanionAgent.js';
+import { MultiProviderAgent } from '../../../../src/agent/MultiProviderAgent.js';
 import { defineProvider } from '../../../../src/provider/defineProvider.js';
 import { createMultiProviderAgent } from '../../../../src/provider/factories/createMultiProviderAgent.js';
 import type {
@@ -84,7 +84,7 @@ function createStreamableProvider(
   };
 }
 
-/** Set up an InProcessExecutor with a MultiProviderCompanionAgent and return parsed discovery. */
+/** Set up an InProcessExecutor with a MultiProviderAgent and return parsed discovery. */
 async function discoverWithProviders(
   providers: AIProvider[],
 ): Promise<AgentInfo[]> {
@@ -93,7 +93,7 @@ async function discoverWithProviders(
     registry.register(p);
   }
 
-  const agent = new MultiProviderCompanionAgent({
+  const agent = new MultiProviderAgent({
     id: 'test-agent',
     defaultProviderId: providers[0]!.id,
     registry,
@@ -572,7 +572,7 @@ describe('Property 10: Interoperability of custom and built-in providers', () =>
             defaultProviderId: customProvider.id,
           });
 
-          expect(agent).toBeInstanceOf(MultiProviderCompanionAgent);
+          expect(agent).toBeInstanceOf(MultiProviderAgent);
 
           const registryList = agent.getProviderRegistry().list();
           expect(registryList).toHaveLength(2);
