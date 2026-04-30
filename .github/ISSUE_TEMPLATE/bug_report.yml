@@ -1,0 +1,85 @@
+name: Bug Report
+description: Report a bug in @stdiobus/mcp-agentic
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please fill out the sections below to help us investigate.
+
+  - type: input
+    id: version
+    attributes:
+      label: Package Version
+      description: Which version of @stdiobus/mcp-agentic are you using?
+      placeholder: "1.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      description: Output of `node --version`
+      placeholder: "v22.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: executor
+    attributes:
+      label: Executor Type
+      description: Which executor backend are you using?
+      options:
+        - InProcessExecutor
+        - WorkerExecutor (StdioBus)
+        - Both
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Create server with `new McpAgenticServer({...})`
+        2. Register agent with `server.register(...)`
+        3. Call `sessions_prompt` with `...`
+        4. Observe error `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include error messages and stack traces.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, logs, or screenshots.
+    validations:
+      required: false

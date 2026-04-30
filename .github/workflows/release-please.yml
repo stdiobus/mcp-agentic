@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Release Please — Automated version management and CHANGELOG generation
+#
+# On every push to main, release-please analyzes conventional commits since
+# the last release and maintains a "Release PR" with the correct version bump
+# and generated CHANGELOG.
+#
+# Flow:
+#   1. PRs merge into main with conventional commits (feat:, fix:, etc.)
+#   2. This workflow creates/updates a Release PR accumulating all changes
+#   3. The Release PR contains: bumped package.json + CHANGELOG.md
+#   4. When maintainer merges the Release PR → GitHub Release is created
+#   5. release.yml picks up the GitHub Release → publishes to npm
+#
+# Version bump rules (semver):
+#   feat:             → minor  (1.1.0 → 1.2.0)
+#   fix:              → patch  (1.1.0 → 1.1.1)
+#   BREAKING CHANGE:  → major  (1.1.0 → 2.0.0)
+#   chore/docs/ci:    → no release (accumulated until next feat/fix)
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run release-please
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: node
+          package-name: '@stdiobus/mcp-agentic'
+          # Changelog sections mapping from conventional commits
+          changelog-types: >
+            [
+              {"type":"feat","section":"Features","hidden":false},
+              {"type":"fix","section":"Bug Fixes","hidden":false},
+              {"type":"perf","section":"Performance","hidden":false},
+              {"type":"revert","section":"Reverts","hidden":false},
+              {"type":"docs","section":"Documentation","hidden":false},
+              {"type":"chore","section":"Miscellaneous","hidden":true},
+              {"type":"style","section":"Miscellaneous","hidden":true},
+              {"type":"refactor","section":"Code Refactoring","hidden":false},
+              {"type":"test","section":"Tests","hidden":true},
+              {"type":"build","section":"Build System","hidden":true},
+              {"type":"ci","section":"CI/CD","hidden":true}
+            ]
