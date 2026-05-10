@@ -1,18 +1,22 @@
-# MCP Agentic — Multi-Agent Orchestration Server
+<h1 align="center">MCP Agentic — Multi-Agent Orchestration Server</h1>
 
-[![npm](https://img.shields.io/npm/v/@stdiobus/mcp-agentic?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/@stdiobus/mcp-agentic)
-[![MCP](https://img.shields.io/badge/protocol-MCP-purple?style=for-the-badge&logo=jsonwebtokens)](https://modelcontextprotocol.io)
-[![ACP](https://img.shields.io/badge/protocol-ACP-purple?style=for-the-badge&logo=jsonwebtokens)](https://agentclientprotocol.com)
-[![stdioBus](https://img.shields.io/badge/ecosystem-stdio%20Bus-ff4500?style=for-the-badge)](https://github.com/stdiobus)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=for-the-badge&logo=nodedotjs)](https://nodejs.org)
-[![Build](https://img.shields.io/badge/build-esbuild-yellow?style=for-the-badge&logo=esbuild)](https://esbuild.github.io)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=for-the-badge&logo=nodedotjs)](https://github.com/stdiobus/mcp-agentic)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge&logo=opensourceinitiative)](https://github.com/stdiobus/mcp-agentic/blob/main/LICENSE)
-[![TypeScript](https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-780%20passing-brightgreen?style=for-the-badge&logo=jest)](https://github.com/stdiobus/mcp-agentic)
-[![E2E](https://img.shields.io/badge/e2e-86%20passing-brightgreen?style=for-the-badge&logo=playwright)](https://github.com/stdiobus/mcp-agentic)
+<p align="center">
+  Agent orchestration server that connects MCP clients to ACP-compatible agents through <a href="https://stdiobus.com">stdio Bus</a>.
+</p>
 
-Agent orchestration server that connects MCP clients to ACP-compatible agents through [stdio Bus](https://stdiobus.com).
+<p align="center">
+  <a href="https://www.npmjs.com/package/@stdiobus/mcp-agentic"><img src="https://img.shields.io/npm/v/@stdiobus/mcp-agentic?style=for-the-badge&logo=npm" alt="npm"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/protocol-MCP-purple?style=for-the-badge&logo=jsonwebtokens" alt="MCP"></a>
+  <a href="https://agentclientprotocol.com"><img src="https://img.shields.io/badge/protocol-ACP-purple?style=for-the-badge&logo=jsonwebtokens" alt="ACP"></a>
+  <a href="https://github.com/stdiobus"><img src="https://img.shields.io/badge/ecosystem-stdio%20Bus-ff4500?style=for-the-badge" alt="stdioBus"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=for-the-badge&logo=nodedotjs" alt="Node"></a>
+  <a href="https://esbuild.github.io"><img src="https://img.shields.io/badge/build-esbuild-yellow?style=for-the-badge&logo=esbuild" alt="Build"></a>
+  <a href="https://github.com/stdiobus/mcp-agentic"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=for-the-badge&logo=nodedotjs" alt="Platform"></a>
+  <a href="https://github.com/stdiobus/mcp-agentic/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge&logo=opensourceinitiative" alt="License"></a>
+  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/typescript-strict-blue?style=for-the-badge&logo=typescript" alt="TypeScript"></a>
+  <a href="https://github.com/stdiobus/mcp-agentic"><img src="https://img.shields.io/badge/tests-780%20passing-brightgreen?style=for-the-badge&logo=jest" alt="Tests"></a>
+  <a href="https://github.com/stdiobus/mcp-agentic"><img src="https://img.shields.io/badge/e2e-86%20passing-brightgreen?style=for-the-badge&logo=playwright" alt="E2E"></a>
+</p>
 
 Agents run in-process (via `AgentHandler`) or as external worker processes (via `@stdiobus/node` StdioBus). The single entry point is `McpAgenticServer`, which owns the MCP server, tool registration, and executor lifecycle.
 
