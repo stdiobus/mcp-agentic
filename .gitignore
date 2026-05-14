@@ -807,7 +807,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 .kiro
-AGENTS.md
 .ai/collegues
 
 # Gradle and Maven with auto-import
