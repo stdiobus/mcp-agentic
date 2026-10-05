@@ -27,12 +27,52 @@ import type { AgentInfo, SessionEntry, HealthInfo, WorkerConfig } from './types.
 import type { AgentResult, PromptOpts } from '../agent/AgentHandler.js';
 import { BridgeError } from '../errors/BridgeError.js';
 
+/**
+ * StdioBus listen mode values for transport configuration.
+ * Maps directly to the `listenMode` field of `StdioBusOptions`.
+ *
+ * - `'none'`  — no external listener; workers communicate via internal pipes only.
+ * - `'tcp'`   — open a TCP listener (requires `tcpHost` / `tcpPort`).
+ * - `'unix'`  — open a Unix domain socket listener (requires `unixPath`).
+ */
+export type WorkerListenMode = 'none' | 'tcp' | 'unix';
+
 /** Configuration for {@link WorkerExecutor}. */
 export interface WorkerExecutorConfig {
   /** Default request timeout in milliseconds. Default: 30000. */
   defaultTimeout?: number;
   /** When true, suppresses process.stderr.write logging. Default: false. */
   silent?: boolean;
+
+  // ── Transport / listen mode ──────────────────────────────────
+  //
+  // One StdioBus instance maps to exactly one daemon and therefore one
+  // listenMode. These are executor-level (server-level) settings, not
+  // per-worker settings.
+
+  /**
+   * StdioBus listen mode.
+   * - `'none'` (default) — no external listener; workers use internal pipes.
+   * - `'tcp'`  — enable TCP listener; set `tcpHost` / `tcpPort` as well.
+   * - `'unix'` — enable Unix socket listener; set `unixPath` as well.
+   */
+  listenMode?: WorkerListenMode;
+  /**
+   * TCP host to bind when `listenMode` is `'tcp'`.
+   * Passed directly to `StdioBusOptions.tcpHost`.
+   * Default: StdioBus decides (typically `'127.0.0.1'`).
+   */
+  tcpHost?: string;
+  /**
+   * TCP port to bind when `listenMode` is `'tcp'`.
+   * Passed directly to `StdioBusOptions.tcpPort`.
+   */
+  tcpPort?: number;
+  /**
+   * Unix socket path to bind when `listenMode` is `'unix'`.
+   * Passed directly to `StdioBusOptions.unixPath`.
+   */
+  unixPath?: string;
 }
 
 /**
@@ -49,6 +89,10 @@ export class WorkerExecutor implements AgentExecutor {
   private startedAt = 0;
   private defaultTimeout: number;
   private silent: boolean;
+  private listenMode: WorkerListenMode;
+  private tcpHost: string | undefined;
+  private tcpPort: number | undefined;
+  private unixPath: string | undefined;
 
   /**
    * @param config - Optional executor configuration.
@@ -56,6 +100,10 @@ export class WorkerExecutor implements AgentExecutor {
   constructor(config?: WorkerExecutorConfig) {
     this.defaultTimeout = config?.defaultTimeout ?? 30_000;
     this.silent = config?.silent ?? false;
+    this.listenMode = config?.listenMode ?? 'none';
+    this.tcpHost = config?.tcpHost;
+    this.tcpPort = config?.tcpPort;
+    this.unixPath = config?.unixPath;
   }
 
   /**
@@ -95,11 +143,23 @@ export class WorkerExecutor implements AgentExecutor {
         // adds env support to pool definitions, pass w.env here.
       }));
 
+      // Build transport options. Only include optional fields when they carry
+      // a defined value — exactOptionalPropertyTypes requires this discipline.
+      const transportOptions: Pick<StdioBusOptions, 'listenMode' | 'tcpHost' | 'tcpPort' | 'unixPath'> = {
+        listenMode: this.listenMode,
+        ...(this.tcpHost !== undefined ? { tcpHost: this.tcpHost } : {}),
+        ...(this.tcpPort !== undefined ? { tcpPort: this.tcpPort } : {}),
+        ...(this.unixPath !== undefined ? { unixPath: this.unixPath } : {}),
+      };
+
       // Type-checked against StdioBusOptions to catch property renames at
       // compile time. Without `satisfies`, a renamed property (e.g.
       // configJson → config) would be silently ignored at runtime, causing
       // an opaque "Connection closed" crash on the MCP client side.
-      const busOptions = { config: { pools } } satisfies StdioBusOptions;
+      const busOptions = {
+        config: { pools },
+        ...transportOptions,
+      } satisfies StdioBusOptions;
 
       this.bus = new StdioBus(busOptions);
       await this.bus.start();
