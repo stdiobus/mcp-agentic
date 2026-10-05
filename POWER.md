@@ -1,7 +1,7 @@
 ---
 name: "mcp-agentic"
 displayName: "MCP Agentic"
-description: "Connect MCP clients to ACP-compatible agents through a local MCP bridge built on stdio Bus with embedded runtime and multi-provider AI support (OpenAI, Anthropic, Google Gemini)"
+description: "Connect MCP clients to ACP-compatible agents through a local MCP bridge built on stdio Bus with embedded runtime, multi-provider AI support (OpenAI, Anthropic, Google Gemini), multimodal content, OpenAI Responses API, and Files API"
 keywords:
   - acp
   - agent client protocol
@@ -23,6 +23,9 @@ keywords:
   - gemini
   - runtime-params
   - provider-discovery
+  - multimodal
+  - openai-responses
+  - files-api
 author: "stdio Bus"
 license: "Apache-2.0"
 ---
@@ -31,7 +34,9 @@ license: "Apache-2.0"
 
 This power enables MCP clients to communicate with ACP-compatible agents through a local MCP bridge. Agents can run in-process (via `AgentHandler` implementations) or as external worker processes (via `@stdiobus/node` StdioBus). The single entry point is `McpAgenticServer`, which owns the MCP server, tool registration, and executor lifecycle.
 
-The power includes a **multi-provider AI layer** supporting OpenAI, Anthropic, and Google Gemini through their native SDKs. The **Factory API** (`openAI()`, `anthropic()`, `gemini()`, `createMultiProviderAgent()`) is the recommended way to configure providers with flat, typed options and Zod validation. Custom providers can be created via `defineProvider()`. Providers expose `kind` and `capabilities` metadata for enriched discovery via `agents_discover`.
+The power includes a **multi-provider AI layer** supporting OpenAI, Anthropic, and Google Gemini through their native SDKs. The **Factory API** (`openAI()`, `anthropic()`, `gemini()`, `openAIResponses()`, `createMultiProviderAgent()`) is the recommended way to configure providers with flat, typed options and Zod validation. Custom providers can be created via `defineProvider()`. Providers expose `kind` and `capabilities` metadata for enriched discovery via `agents_discover`.
+
+**Multimodal content** is supported across all providers via `ContentPart[]` in `ChatMessage.content` — pass text, image URLs, or file references in a single message. The **OpenAI Responses API** is available through `OpenAIResponsesProvider` (`openAIResponses()` factory), which targets `/v1/responses` exclusively and exposes a **Files API** for server-side file upload and lifecycle management.
 
 ## Use this power when
 
@@ -40,8 +45,10 @@ The power includes a **multi-provider AI layer** supporting OpenAI, Anthropic, a
 - **Managing agent sessions** — create, prompt, check status, cancel, or close sessions
 - **Multi-step delegated work** — preserve session continuity across multiple interactions
 - **One-shot delegation** — delegate a task in a single call (create + prompt + close)
-- **Selecting AI providers** — choose between OpenAI, Anthropic, or Google Gemini per session
+- **Selecting AI providers** — choose between OpenAI Chat Completions, OpenAI Responses API, Anthropic, or Google Gemini per session
 - **Tuning AI parameters at runtime** — override model, temperature, systemPrompt, and other parameters per request
+- **Sending multimodal content** — include images, file references, and text in a single message via `ContentPart[]`
+- **Managing server-side files** — upload files once via Files API and reference by ID across prompts (OpenAI Responses API)
 
 Do not use this power when the task can be completed fully without external delegation.
 
@@ -67,14 +74,14 @@ Do not use this power when the task can be completed fully without external dele
 - **WorkerExecutor** — StdioBus transport to external ACP worker processes
 - **Tool Handlers** — decoupled functions in `src/mcp/tools/*.ts` that depend only on `AgentExecutor`
 - **ProviderRegistry** — registry of AI providers; supports registration, lookup, and discovery of available providers and their models
-- **MultiProviderCompanionAgent** — agent implementing `AgentHandler` that delegates AI generation to any registered provider, with dynamic provider selection per session and runtime parameter overrides
+- **MultiProviderAgent** — agent implementing `AgentHandler` that delegates AI generation to any registered provider, with dynamic provider selection per session and runtime parameter overrides
 
 ## MCP tools (8 total)
 
 | Tool | Description |
 |------|-------------|
 | `bridge_health` | Check bridge readiness |
-| `agents_discover` | List available agents, optionally filter by capability. Response includes a `providers` field for agents that support multiple AI providers, listing each provider's `id`, `models`, `kind`, `capabilities`, `displayName`, and `description`. |
+| `agents_discover` | List available agents, optionally filter by capability. Response includes a `providers` field for agents that support multiple AI providers, listing each provider's `id`, `models`, `kind`, `capabilities` (`streaming`, `tools`, `vision`, `jsonMode`, `files`), `displayName`, and `description`. |
 | `sessions_create` | Create a new agent session, returns a `sessionId`. Accepts `metadata.provider` to select a specific AI provider for the session, and `metadata.runtimeParams` for session-level parameter defaults. |
 | `sessions_prompt` | Send a prompt to an existing session. Accepts an optional `runtimeParams` field to override provider parameters (model, temperature, systemPrompt, etc.) for this specific prompt. |
 | `sessions_status` | Check the status of an existing session |
@@ -154,15 +161,23 @@ interface McpAgenticServerConfig {
   maxPromptBytes?: number;
   /** Maximum metadata size in bytes (JSON-serialized). Default: 65536 (64 KiB). */
   maxMetadataBytes?: number;
+  /** StdioBus listen mode for the worker executor. 'none' (default) | 'tcp' | 'unix' */
+  workerListenMode?: 'none' | 'tcp' | 'unix';
+  /** TCP host for worker executor. Required when workerListenMode is 'tcp'. */
+  workerTcpHost?: string;
+  /** TCP port for worker executor. Required when workerListenMode is 'tcp'. */
+  workerTcpPort?: number;
+  /** Unix socket path for worker executor. Required when workerListenMode is 'unix'. */
+  workerUnixPath?: string;
 }
 ```
 
-### MultiProviderCompanionConfig
+### MultiProviderAgentConfig
 
-Configuration for constructing a `MultiProviderCompanionAgent`:
+Configuration for constructing a `MultiProviderAgent`:
 
 ```typescript
-interface MultiProviderCompanionConfig {
+interface MultiProviderAgentConfig {
   /** Unique agent identifier. */
   id: string;
   /** Default provider id to use when no override is specified. */
@@ -180,7 +195,7 @@ interface MultiProviderCompanionConfig {
 
 ### ProviderConfig
 
-Configuration for constructing a provider instance:
+> **Deprecated.** Used only by the low-level class-based API (`new OpenAIProvider()`, etc.). When using the Factory API (`openAI()`, `anthropic()`, `gemini()`, `openAIResponses()`), credentials and models are passed as flat typed options directly to the factory — `ProviderConfig` is not needed.
 
 ```typescript
 interface ProviderConfig {
@@ -206,6 +221,7 @@ interface RuntimeParams {
   topK?: number;             // Top-K sampling
   stopSequences?: string[];  // Stop sequences
   systemPrompt?: string;     // System prompt override
+  detail?: 'low' | 'high' | 'original' | 'auto';  // Image resolution hint (vision providers)
   providerSpecific?: Record<string, unknown>;  // Provider-native parameters
 }
 ```
@@ -256,7 +272,7 @@ The multi-provider layer allows using OpenAI, Anthropic, and Google Gemini throu
 Install only the provider SDKs you need:
 
 ```bash
-# OpenAI
+# OpenAI Chat Completions + Responses API (both openAI() and openAIResponses() use this package)
 npm install openai
 
 # Anthropic
@@ -281,6 +297,69 @@ ProviderConfig.defaults  <  session metadata.runtimeParams  <  prompt-level runt
 - Only defined (non-`undefined`) fields from higher-priority layers override lower ones.
 - `providerSpecific` is shallow-merged (spread) across all layers, not replaced.
 
+### Multimodal content
+
+`ChatMessage.content` accepts `string | ContentPart[]`. All built-in providers map content parts to their native SDK shapes.
+
+```typescript
+import type { ChatMessage } from '@stdiobus/mcp-agentic';
+
+// Text + image in one message
+const message: ChatMessage = {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'Describe this diagram' },
+    { type: 'image_url', image_url: { url: 'https://example.com/diagram.png' }, detail: 'high' },
+  ],
+};
+
+// File reference by server-side file_id (from Files API)
+const fileMessage: ChatMessage = {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'Summarize this document' },
+    { type: 'file', file: { file_id: 'file-abc123' } },
+  ],
+};
+```
+
+Content part types:
+
+| Type | Fields | Notes |
+|------|--------|-------|
+| `text` | `text: string` | Plain text |
+| `image_url` | `image_url.url`, optional `detail` | `detail`: `low` \| `high` \| `original` \| `auto` |
+| `file` | `file.file_id` or `file.filename` or `file.file_data` | `file_data` is base64-encoded |
+
+### Files API
+
+Available on providers that set `capabilities.files: true` (currently `OpenAIResponsesProvider`). Check `provider.files !== undefined` before use.
+
+```typescript
+import { openAIResponses } from '@stdiobus/mcp-agentic';
+
+const provider = openAIResponses({ apiKey: process.env.OPENAI_API_KEY!, models: ['gpt-4o'] });
+
+// Upload a file once
+const uploaded = await provider.files.create({
+  filename: 'report.pdf',
+  content: pdfBytes,        // Uint8Array or UTF-8 string
+  mimeType: 'application/pdf',
+});
+
+// Reference by fileId in subsequent prompts — no re-upload needed
+const message: ChatMessage = {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'What are the key findings?' },
+    { type: 'file', file: { file_id: uploaded.fileId } },
+  ],
+};
+
+// Clean up when done
+await provider.files.delete(uploaded.fileId);
+```
+
 ### Programmatic setup with providers
 
 ```typescript
@@ -289,6 +368,7 @@ import {
   openAI,
   anthropic,
   gemini,
+  openAIResponses,
   createMultiProviderAgent,
 } from '@stdiobus/mcp-agentic';
 
@@ -309,6 +389,11 @@ const agent = createMultiProviderAgent({
     gemini({
       apiKey: process.env.GOOGLE_AI_API_KEY!,
       models: ['gemini-2.0-flash'],
+    }),
+    // OpenAI Responses API — targets /v1/responses, supports Files API
+    openAIResponses({
+      apiKey: process.env.OPENAI_API_KEY!,
+      models: ['gpt-4o', 'o4-mini'],
     }),
   ],
   capabilities: ['chat', 'analysis'],
@@ -342,9 +427,10 @@ agents_discover({ capability: "chat" })
     capabilities: ["chat", "analysis"],
     status: "ready",
     providers: [
-      { id: "openai", models: ["gpt-4o", "gpt-4o-mini"], kind: "llm", capabilities: { streaming: true, tools: true, vision: true, jsonMode: true }, displayName: "OpenAI" },
-      { id: "anthropic", models: ["claude-sonnet-4-20250514"], kind: "llm", capabilities: { streaming: true, tools: true, vision: true, jsonMode: false }, displayName: "Anthropic" },
-      { id: "google-gemini", models: ["gemini-2.0-flash"], kind: "llm", capabilities: { streaming: false, tools: false, vision: true, jsonMode: true }, displayName: "Google Gemini" }
+      { id: "openai", models: ["gpt-4o", "gpt-4o-mini"], kind: "llm", capabilities: { streaming: true, tools: true, vision: true, jsonMode: true, files: false }, displayName: "OpenAI" },
+      { id: "openai-responses", models: ["gpt-4o"], kind: "llm", capabilities: { streaming: false, tools: false, vision: true, jsonMode: false, files: true }, displayName: "OpenAI Responses" },
+      { id: "anthropic", models: ["claude-sonnet-4-20250514"], kind: "llm", capabilities: { streaming: true, tools: true, vision: true, jsonMode: false, files: false }, displayName: "Anthropic" },
+      { id: "google-gemini", models: ["gemini-2.0-flash"], kind: "llm", capabilities: { streaming: false, tools: false, vision: true, jsonMode: true, files: false }, displayName: "Google Gemini" }
     ]
   }]
 ```
@@ -429,6 +515,11 @@ sessions_close({ sessionId: "abc-123" })
 **Provider SDK not installed:**
 - Provider SDKs (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are peer dependencies — install only the ones you need
 - If you see a module-not-found error for a provider SDK, run `npm install <package-name>`
+- `openAIResponses()` uses the same `openai` peer dependency as `openAI()`
+
+**Files API not available on provider:**
+- Only `OpenAIResponsesProvider` exposes `provider.files`. Check `capabilities.files: true` in `agents_discover` response
+- Calling `provider.files.create()` on a provider without Files API support throws `BridgeError` with category `CONFIG`
 
 **API key missing → BridgeError CONFIG:**
 - Each provider validates that required credentials (e.g., `apiKey`) are present and non-empty at construction time
