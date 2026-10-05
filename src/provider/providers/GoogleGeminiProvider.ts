@@ -18,6 +18,7 @@ import type {
   AIProvider,
   AIProviderResult,
   ChatMessage,
+  ContentPart,
   ProviderConfig,
   ProviderCapabilities,
   ProviderKind,
@@ -58,15 +59,27 @@ const GEMINI_PROFILES: readonly ModelProfile[] = [
 
 // ── Types for the Gemini SDK (minimal surface used) ─────────────
 
-/** A single content part in Gemini format. */
+/** A plain-text content part in Gemini format. */
 interface GeminiPart {
   text: string;
 }
 
+/**
+ * Extended Gemini part union covering all multimodal variants.
+ *
+ * - `{ text }` — plain text (from TextPart or string content)
+ * - `{ fileData }` — image or file referenced by URI (from ImageUrlPart)
+ * - `{ inlineData }` — base64-encoded inline file bytes (from FilePart with file_data)
+ */
+type GeminiPartExtended =
+  | { text: string }
+  | { fileData: { mimeType: string; fileUri: string } }
+  | { inlineData: { mimeType: string; data: string } };
+
 /** A content entry in Gemini format (role + parts). */
 interface GeminiContent {
   role: 'user' | 'model';
-  parts: GeminiPart[];
+  parts: GeminiPartExtended[];
 }
 
 /** Generation configuration for Gemini requests. */
@@ -86,7 +99,7 @@ interface GeminiUsageMetadata {
 
 /** A single candidate in Gemini response. */
 interface GeminiCandidate {
-  content?: { parts?: GeminiPart[] };
+  content?: { parts?: GeminiPartExtended[] };
   finishReason?: string;
 }
 
@@ -248,7 +261,8 @@ export class GoogleGeminiProvider implements AIProvider {
       // Normalize response
       const candidate = response.candidates?.[0];
       const text = candidate?.content?.parts
-        ?.map((part) => part.text)
+        ?.filter((part): part is { text: string } => 'text' in part)
+        .map((part) => part.text)
         .join('') ?? '';
       const nativeStopReason = candidate?.finishReason ?? 'unknown';
       const stopReason = STOP_REASON_MAP[nativeStopReason] ?? nativeStopReason;
@@ -274,7 +288,9 @@ export class GoogleGeminiProvider implements AIProvider {
    * Convert standard ChatMessage[] to Gemini Content[] format.
    *
    * System messages are extracted and combined into a systemInstruction.
-   * User/assistant messages are mapped to Gemini's 'user'/'model' roles.
+   * When a system message carries `ContentPart[]` content, only `TextPart`
+   * values are concatenated (Gemini system instructions are text-only).
+   * User/assistant messages are mapped via `mapChatMessageToGemini`.
    */
   private convertMessages(
     messages: ChatMessage[],
@@ -286,14 +302,23 @@ export class GoogleGeminiProvider implements AIProvider {
     const systemParts: string[] = [];
     const contents: GeminiContent[] = [];
 
-    // Collect system messages
     for (const msg of messages) {
       if (msg.role === 'system') {
-        systemParts.push(msg.content);
+        // System messages are always text — extract only TextPart values
+        if (typeof msg.content === 'string') {
+          systemParts.push(msg.content);
+        } else {
+          for (const part of msg.content) {
+            if (part.type === 'text') {
+              systemParts.push(part.text);
+            }
+            // Non-text parts in system messages are silently ignored
+          }
+        }
       } else {
         contents.push({
           role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }],
+          parts: this.mapChatMessageToGemini(msg),
         });
       }
     }
@@ -308,6 +333,57 @@ export class GoogleGeminiProvider implements AIProvider {
       : null;
 
     return { contents, systemInstruction };
+  }
+
+  /**
+   * Map a single non-system `ChatMessage` to a `GeminiPartExtended[]` array.
+   *
+   * Mapping rules:
+   * - `string` content  → `[{ text: content }]`
+   * - `TextPart`        → `{ text: part.text }`
+   * - `ImageUrlPart`    → `{ fileData: { mimeType: 'image/*', fileUri: url } }`
+   * - `FilePart` with `file_data` → `{ inlineData: { mimeType: 'application/octet-stream', data } }`
+   * - `FilePart` without `file_data` → silently omitted
+   * - Empty result after mapping → `[{ text: '' }]` (fallback)
+   */
+  private mapChatMessageToGemini(msg: ChatMessage): GeminiPartExtended[] {
+    if (typeof msg.content === 'string') {
+      return [{ text: msg.content }];
+    }
+
+    const parts: GeminiPartExtended[] = [];
+
+    for (const part of msg.content as ContentPart[]) {
+      switch (part.type) {
+        case 'text':
+          parts.push({ text: part.text });
+          break;
+
+        case 'image_url':
+          parts.push({
+            fileData: {
+              mimeType: 'image/*',
+              fileUri: part.image_url.url,
+            },
+          });
+          break;
+
+        case 'file':
+          if (part.file.file_data !== undefined) {
+            parts.push({
+              inlineData: {
+                mimeType: 'application/octet-stream',
+                data: part.file.file_data,
+              },
+            });
+          }
+          // FilePart without file_data is silently omitted
+          break;
+      }
+    }
+
+    // Fallback: never send an empty parts array to the Gemini API
+    return parts.length > 0 ? parts : [{ text: '' }];
   }
 
   // ── Error mapping ───────────────────────────────────────────────

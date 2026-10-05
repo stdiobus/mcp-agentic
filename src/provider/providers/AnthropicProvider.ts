@@ -18,6 +18,7 @@ import type {
   AIProvider,
   AIProviderResult,
   ChatMessage,
+  ContentPart,
   ProviderConfig,
   ProviderCapabilities,
   ProviderKind,
@@ -58,14 +59,25 @@ const ANTHROPIC_PROFILES: readonly ModelProfile[] = [
 
 // ── Types for the Anthropic SDK (minimal surface used) ──────────
 
+/**
+ * Discriminated union of Anthropic content block types.
+ *
+ * These are the SDK-level block types for the Messages API request body.
+ * Not exported — internal to AnthropicProvider.
+ */
+type AnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'url'; url: string } }
+  | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } };
+
 /** A single message in Anthropic format. */
 interface AnthropicMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | AnthropicContentBlock[];
 }
 
 /** A content block in Anthropic response. */
-interface AnthropicContentBlock {
+interface AnthropicResponseContentBlock {
   type: string;
   text?: string;
 }
@@ -78,7 +90,7 @@ interface AnthropicUsage {
 
 /** Anthropic messages.create() response shape. */
 interface AnthropicMessageResponse {
-  content: AnthropicContentBlock[];
+  content: AnthropicResponseContentBlock[];
   stop_reason?: string | null;
   usage?: AnthropicUsage;
 }
@@ -231,8 +243,8 @@ export class AnthropicProvider implements AIProvider {
 
       // Extract text from content blocks (type: 'text')
       const text = response.content
-        .filter((block) => block.type === 'text')
-        .map((block) => block.text ?? '')
+        .filter((block: AnthropicResponseContentBlock) => block.type === 'text')
+        .map((block: AnthropicResponseContentBlock) => block.text ?? '')
         .join('');
 
       // Normalize stop reason
@@ -254,6 +266,68 @@ export class AnthropicProvider implements AIProvider {
     }
   }
 
+  // ── Content mapping ─────────────────────────────────────────────
+
+  /**
+   * Map a `ChatMessage` to its Anthropic SDK-compatible content.
+   *
+   * - `string` content is returned as-is.
+   * - `ContentPart[]` is mapped to Anthropic content blocks with best-effort
+   *   handling for each part type.
+   * - Parts that cannot be represented are silently omitted.
+   * - An empty resulting array is replaced with `[{ type: 'text', text: '' }]`
+   *   to satisfy the Anthropic API's non-empty content constraint.
+   */
+  private mapChatMessageToAnthropic(msg: ChatMessage): string | AnthropicContentBlock[] {
+    const { content } = msg;
+
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    const blocks: AnthropicContentBlock[] = [];
+
+    for (const part of content) {
+      switch (part.type) {
+        case 'text':
+          blocks.push({ type: 'text', text: part.text });
+          break;
+
+        case 'image_url':
+          blocks.push({
+            type: 'image',
+            source: { type: 'url', url: part.image_url.url },
+          });
+          break;
+
+        case 'file':
+          // Best-effort: only PDF files with inline base64 data can be mapped
+          if (
+            part.file.file_data !== undefined &&
+            part.file.filename?.toLowerCase().endsWith('.pdf') === true
+          ) {
+            blocks.push({
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: part.file.file_data,
+              },
+            });
+          }
+          // All other FilePart variants are silently omitted (best-effort contract)
+          break;
+      }
+    }
+
+    // Fallback: prevent empty content array from being sent to the API
+    if (blocks.length === 0) {
+      return [{ type: 'text', text: '' }];
+    }
+
+    return blocks;
+  }
+
   // ── System prompt extraction ────────────────────────────────────
 
   /**
@@ -262,6 +336,9 @@ export class AnthropicProvider implements AIProvider {
    *
    * Anthropic requires system prompt as a top-level `system` parameter,
    * not as a message in the messages array.
+   *
+   * When a system message has `ContentPart[]` content, only `TextPart`
+   * values are concatenated — other part types are silently skipped.
    */
   private extractSystemPrompt(
     messages: ChatMessage[],
@@ -273,14 +350,24 @@ export class AnthropicProvider implements AIProvider {
     const systemParts: string[] = [];
     const anthropicMessages: AnthropicMessage[] = [];
 
-    // Collect system messages and separate non-system messages
     for (const msg of messages) {
       if (msg.role === 'system') {
-        systemParts.push(msg.content);
+        // Extract text from system messages; concatenate TextPart values for ContentPart[] content
+        if (typeof msg.content === 'string') {
+          systemParts.push(msg.content);
+        } else {
+          const text = msg.content
+            .filter((p): p is ContentPart & { type: 'text' } => p.type === 'text')
+            .map((p) => p.text)
+            .join('');
+          if (text) {
+            systemParts.push(text);
+          }
+        }
       } else {
         anthropicMessages.push({
           role: msg.role,
-          content: msg.content,
+          content: this.mapChatMessageToAnthropic(msg),
         });
       }
     }

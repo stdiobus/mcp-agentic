@@ -18,6 +18,7 @@ import type {
   AIProvider,
   AIProviderResult,
   ChatMessage,
+  ContentPart,
   ProviderConfig,
   ProviderCapabilities,
   ProviderKind,
@@ -130,6 +131,28 @@ const OPENAI_PROFILES: readonly ModelProfile[] = [
     renames: { maxTokens: 'max_tokens' },
   },
 ];
+
+// ── Internal content block types (not exported) ─────────────────
+
+/**
+ * Discriminated union of OpenAI Chat Completions content block shapes.
+ *
+ * Used exclusively for constructing multimodal messages within this module.
+ * Not exported — the SDK's own types are the authoritative external contract.
+ */
+type OpenAIContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: string } }
+  | { type: 'file'; file: { file_id?: string; filename?: string; file_data?: string } };
+
+/**
+ * Internal representation of a Chat Completions message that may carry
+ * either a plain string or a multimodal content block array.
+ */
+interface OpenAIUserMessage {
+  role: string;
+  content: string | OpenAIContentBlock[];
+}
 
 // ── Types for the OpenAI SDK (minimal surface used) ─────────────
 
@@ -262,11 +285,8 @@ export class OpenAIProvider implements AIProvider {
       );
     }
 
-    // Convert ChatMessage[] to OpenAI message format
-    const openaiMessages: Array<{ role: string; content: string }> = messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    // Convert ChatMessage[] to OpenAI message format (string or multimodal)
+    const openaiMessages: OpenAIUserMessage[] = messages.map((msg) => this.mapChatMessageToOpenAI(msg));
 
     // Prepend systemPrompt as a system message if provided and not already present
     if (params.systemPrompt) {
@@ -316,6 +336,56 @@ export class OpenAIProvider implements AIProvider {
     } catch (err: unknown) {
       throw this.mapError(err);
     }
+  }
+
+  // ── ContentPart mapping ─────────────────────────────────────────
+
+  /**
+   * Type guard: returns `true` when `content` is a plain string.
+   *
+   * Narrows `string | ContentPart[]` to `string` for the caller.
+   */
+  private isStringContent(content: string | ContentPart[]): content is string {
+    return typeof content === 'string';
+  }
+
+  /**
+   * Convert a `ChatMessage` to the OpenAI Chat Completions message shape.
+   *
+   * - String content is passed through unchanged.
+   * - `ContentPart[]` content is mapped part-by-part:
+   *   - `TextPart`     → `{ type: 'text', text }`
+   *   - `ImageUrlPart` → `{ type: 'image_url', image_url: { url, detail? } }`
+   *   - `FilePart`     → `{ type: 'file', file: { file_id?, filename?, file_data? } }`
+   */
+  private mapChatMessageToOpenAI(msg: ChatMessage): OpenAIUserMessage {
+    if (this.isStringContent(msg.content)) {
+      return { role: msg.role, content: msg.content };
+    }
+
+    const blocks: OpenAIContentBlock[] = msg.content.map((part): OpenAIContentBlock => {
+      switch (part.type) {
+        case 'text':
+          return { type: 'text', text: part.text };
+
+        case 'image_url': {
+          const imageBlock: OpenAIContentBlock = {
+            type: 'image_url',
+            image_url: { url: part.image_url.url },
+          };
+          if (part.detail !== undefined) {
+            (imageBlock as { type: 'image_url'; image_url: { url: string; detail?: string } }).image_url.detail =
+              part.detail;
+          }
+          return imageBlock;
+        }
+
+        case 'file':
+          return { type: 'file', file: { ...part.file } };
+      }
+    });
+
+    return { role: msg.role, content: blocks };
   }
 
   // ── Error mapping ───────────────────────────────────────────────

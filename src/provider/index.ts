@@ -63,3 +63,20 @@ export type { GeminiOptions } from './factories/gemini.js';
 
 export { createMultiProviderAgent } from './factories/createMultiProviderAgent.js';
 export type { CreateMultiProviderAgentConfig } from './factories/createMultiProviderAgent.js';
+
+// ── Multimodal content part types ───────────────────────────────
+
+export type { ContentPart, TextPart, ImageUrlPart, FilePart } from './AIProvider.js';
+
+// ── Files API types ─────────────────────────────────────────────
+
+export type { FilesAPI, FileCreateParams, UploadedFile } from './AIProvider.js';
+
+// ── OpenAI Responses API provider ───────────────────────────────
+
+export { OpenAIResponsesProvider } from './providers/OpenAIResponsesProvider.js';
+
+// ── OpenAI Responses factory ────────────────────────────────────
+
+export { openAIResponses } from './factories/openai-responses.js';
+export type { OpenAIResponsesOptions } from './factories/openai-responses.js';
