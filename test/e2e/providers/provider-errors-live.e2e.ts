@@ -27,7 +27,7 @@ import { OpenAIProvider } from '../../../src/provider/providers/OpenAIProvider.j
 import { AnthropicProvider } from '../../../src/provider/providers/AnthropicProvider.js';
 import { GoogleGeminiProvider } from '../../../src/provider/providers/GoogleGeminiProvider.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
-import { MultiProviderAgent } from 'src/agent/MultiProviderAgent';
+import { MultiProviderAgent } from '../../../src/agent/MultiProviderAgent.js';
 
 // ── Skip if no API keys ─────────────────────────────────────────
 

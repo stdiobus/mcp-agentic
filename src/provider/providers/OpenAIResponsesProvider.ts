@@ -75,7 +75,7 @@ interface ResponsesCreateParams {
   temperature?: number;
   max_output_tokens?: number;
   top_p?: number;
-  system?: string;
+  instructions?: string;
 }
 
 /**
@@ -262,12 +262,12 @@ export class OpenAIResponsesProvider implements AIProvider {
     }
 
     try {
-      const { input, system } = this.mapMessagesToInput(messages, params);
+      const { input, instructions } = this.mapMessagesToInput(messages, params);
 
       const requestParams: ResponsesCreateParams = {
         model,
         input,
-        ...(system !== undefined ? { system } : {}),
+        ...(instructions !== undefined ? { instructions } : {}),
         ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
         ...(params.maxTokens !== undefined ? { max_output_tokens: params.maxTokens } : {}),
         ...(params.topP !== undefined ? { top_p: params.topP } : {}),
@@ -303,7 +303,7 @@ export class OpenAIResponsesProvider implements AIProvider {
   /**
    * Convert a `ChatMessage[]` to the Responses API `input[]` format.
    *
-   * System messages are extracted and returned as the optional `system`
+   * System messages are extracted and returned as the optional `instructions`
    * string field rather than being included in `input`. When the system
    * message content is `ContentPart[]`, only `TextPart` values are
    * concatenated.
@@ -313,16 +313,16 @@ export class OpenAIResponsesProvider implements AIProvider {
    *
    * @param messages - Conversation history.
    * @param params - Runtime parameters (carries `systemPrompt` override).
-   * @returns An object with `input` messages and an optional `system` string.
+   * @returns An object with `input` messages and an optional `instructions` string.
    */
   private mapMessagesToInput(
     messages: ChatMessage[],
     params: RuntimeParams,
-  ): { input: ResponsesMessage[]; system?: string } {
-    // Determine system prompt: params.systemPrompt wins, else extract from system messages.
-    let system: string | undefined = params.systemPrompt;
+  ): { input: ResponsesMessage[]; instructions?: string } {
+    // Determine instructions: params.systemPrompt wins, else extract from system messages.
+    let instructions: string | undefined = params.systemPrompt;
 
-    if (system === undefined) {
+    if (instructions === undefined) {
       // Collect text from all system messages in order.
       const systemParts: string[] = [];
       for (const msg of messages) {
@@ -340,7 +340,7 @@ export class OpenAIResponsesProvider implements AIProvider {
         }
       }
       if (systemParts.length > 0) {
-        system = systemParts.join('\n');
+        instructions = systemParts.join('\n');
       }
     }
 
@@ -352,9 +352,9 @@ export class OpenAIResponsesProvider implements AIProvider {
         content: this.mapContentToResponsesItems(msg.content, params),
       }));
 
-    const result: { input: ResponsesMessage[]; system?: string } = { input };
-    if (system !== undefined) {
-      result.system = system;
+    const result: { input: ResponsesMessage[]; instructions?: string } = { input };
+    if (instructions !== undefined) {
+      result.instructions = instructions;
     }
     return result;
   }

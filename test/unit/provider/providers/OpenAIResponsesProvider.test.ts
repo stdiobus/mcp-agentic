@@ -619,7 +619,7 @@ describe('OpenAIResponsesProvider — mapContentToResponsesItems and mapMessages
       );
 
       const params = getLastSentParams(responsesCreate);
-      expect(params.system).toBe('You are a helpful assistant.');
+      expect(params.instructions).toBe('You are a helpful assistant.');
       // System message must not appear in input[]
       const systemInInput = params.input.some((m) => m.role === 'system');
       expect(systemInInput).toBe(false);
@@ -637,7 +637,7 @@ describe('OpenAIResponsesProvider — mapContentToResponsesItems and mapMessages
       );
 
       const params = getLastSentParams(responsesCreate);
-      expect(params.system).toBe('Override system prompt');
+      expect(params.instructions).toBe('Override system prompt');
     });
 
     it('should extract TextPart values from ContentPart[] system messages', async () => {
@@ -658,7 +658,7 @@ describe('OpenAIResponsesProvider — mapContentToResponsesItems and mapMessages
       );
 
       const params = getLastSentParams(responsesCreate);
-      expect(params.system).toBe('You are a helpful assistant.\n Be concise.');
+      expect(params.instructions).toBe('You are a helpful assistant.\n Be concise.');
     });
 
     it('should concatenate multiple system messages with newlines', async () => {
@@ -674,7 +674,7 @@ describe('OpenAIResponsesProvider — mapContentToResponsesItems and mapMessages
       );
 
       const params = getLastSentParams(responsesCreate);
-      expect(params.system).toBe('Line one.\nLine two.');
+      expect(params.instructions).toBe('Line one.\nLine two.');
     });
 
     it('should omit the system field entirely when no system prompt is present', async () => {
@@ -686,7 +686,7 @@ describe('OpenAIResponsesProvider — mapContentToResponsesItems and mapMessages
       );
 
       const params = getLastSentParams(responsesCreate);
-      expect(params.system).toBeUndefined();
+      expect(params.instructions).toBeUndefined();
     });
 
     it('should include only non-system messages in the input array', async () => {
