@@ -71,6 +71,11 @@ export const RuntimeParamsSchema = z.object({
   stopSequences: z.array(z.string()).optional(),
   /** System prompt override for this request. */
   systemPrompt: z.string().optional(),
+  /**
+   * Image resolution detail hint. Forwarded to providers that support it.
+   * Silently ignored by providers that do not support it.
+   */
+  detail: z.enum(["low", "high", "original", "auto"]).optional(),
   /** Provider-specific parameters passed through to the native SDK. */
   providerSpecific: z.record(z.unknown()).optional(),
 }).strict();

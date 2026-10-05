@@ -7,7 +7,7 @@
 import { jest, describe, it, expect, beforeAll, beforeEach } from '@jest/globals';
 import * as fc from 'fast-check';
 import type { WorkerConfig } from '../../../src/executor/types.js';
-import type { WorkerExecutorConfig } from '../../../src/executor/WorkerExecutor.js';
+import type { WorkerExecutorConfig, WorkerListenMode } from '../../../src/executor/WorkerExecutor.js';
 
 // ─── Module-level variables populated in beforeAll ────────────────
 
@@ -1085,6 +1085,178 @@ describe('WorkerExecutor — Unit Tests', () => {
         expect(bridgeErr.message).toBe('Invalid worker response: malformed prompt result');
       }
       await executor.close();
+    });
+  });
+});
+
+// ─── Transport / listen-mode tests ───────────────────────────────
+
+describe('WorkerExecutor — Transport Options', () => {
+  // ── Default behaviour ──────────────────────────────────────────
+
+  describe('default (no listenMode configured)', () => {
+    it('passes listenMode "none" to StdioBus when no transport config is provided', async () => {
+      const executor = createSilentWorkerExecutor();
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      expect(capturedBusConfig).toBeDefined();
+      expect(capturedBusConfig.listenMode).toBe('none');
+      expect(capturedBusConfig.tcpHost).toBeUndefined();
+      expect(capturedBusConfig.tcpPort).toBeUndefined();
+      expect(capturedBusConfig.unixPath).toBeUndefined();
+
+      await executor.close();
+    });
+  });
+
+  // ── TCP mode ───────────────────────────────────────────────────
+
+  describe('TCP mode', () => {
+    it('passes listenMode "tcp" and tcpPort to StdioBus', async () => {
+      const executor = createSilentWorkerExecutor({ listenMode: 'tcp', tcpPort: 9000 });
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      expect(capturedBusConfig.listenMode).toBe('tcp');
+      expect(capturedBusConfig.tcpPort).toBe(9000);
+      expect(capturedBusConfig.tcpHost).toBeUndefined();
+      expect(capturedBusConfig.unixPath).toBeUndefined();
+
+      await executor.close();
+    });
+
+    it('passes tcpHost when provided alongside listenMode "tcp"', async () => {
+      const executor = createSilentWorkerExecutor({
+        listenMode: 'tcp',
+        tcpHost: '0.0.0.0',
+        tcpPort: 9001,
+      });
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      expect(capturedBusConfig.listenMode).toBe('tcp');
+      expect(capturedBusConfig.tcpHost).toBe('0.0.0.0');
+      expect(capturedBusConfig.tcpPort).toBe(9001);
+      expect(capturedBusConfig.unixPath).toBeUndefined();
+
+      await executor.close();
+    });
+
+    it('does not include tcpHost in busOptions when not set', async () => {
+      const executor = createSilentWorkerExecutor({ listenMode: 'tcp', tcpPort: 8080 });
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      // exactOptionalPropertyTypes: field must be absent, not undefined
+      expect(Object.prototype.hasOwnProperty.call(capturedBusConfig, 'tcpHost')).toBe(false);
+
+      await executor.close();
+    });
+  });
+
+  // ── Unix socket mode ───────────────────────────────────────────
+
+  describe('Unix socket mode', () => {
+    it('passes listenMode "unix" and unixPath to StdioBus', async () => {
+      const executor = createSilentWorkerExecutor({
+        listenMode: 'unix',
+        unixPath: '/tmp/stdiobus.sock',
+      });
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      expect(capturedBusConfig.listenMode).toBe('unix');
+      expect(capturedBusConfig.unixPath).toBe('/tmp/stdiobus.sock');
+      expect(capturedBusConfig.tcpHost).toBeUndefined();
+      expect(capturedBusConfig.tcpPort).toBeUndefined();
+
+      await executor.close();
+    });
+
+    it('does not include tcpPort or tcpHost when listenMode is "unix"', async () => {
+      const executor = createSilentWorkerExecutor({
+        listenMode: 'unix',
+        unixPath: '/var/run/agent.sock',
+      });
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      expect(Object.prototype.hasOwnProperty.call(capturedBusConfig, 'tcpPort')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(capturedBusConfig, 'tcpHost')).toBe(false);
+
+      await executor.close();
+    });
+  });
+
+  // ── "none" explicit ────────────────────────────────────────────
+
+  describe('explicit "none" mode', () => {
+    it('passes listenMode "none" and omits all address fields', async () => {
+      const executor = createSilentWorkerExecutor({ listenMode: 'none' });
+      executor.addWorker({ id: 'w1', command: 'node', args: ['srv.js'] });
+
+      await executor.start();
+
+      expect(capturedBusConfig.listenMode).toBe('none');
+      expect(Object.prototype.hasOwnProperty.call(capturedBusConfig, 'tcpHost')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(capturedBusConfig, 'tcpPort')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(capturedBusConfig, 'unixPath')).toBe(false);
+
+      await executor.close();
+    });
+  });
+
+  // ── Pool config is still correctly built ──────────────────────
+
+  describe('coexistence with pool config', () => {
+    it('transport options do not interfere with pool configuration', async () => {
+      const executor = createSilentWorkerExecutor({ listenMode: 'tcp', tcpPort: 9999 });
+      executor.addWorker({ id: 'w1', command: 'python', args: ['agent.py'] });
+      executor.addWorker({ id: 'w2', command: 'node', args: ['worker.js'] });
+
+      await executor.start();
+
+      expect(capturedBusConfig.config.pools).toHaveLength(2);
+      expect(capturedBusConfig.config.pools[0].id).toBe('w1');
+      expect(capturedBusConfig.config.pools[1].id).toBe('w2');
+      expect(capturedBusConfig.listenMode).toBe('tcp');
+      expect(capturedBusConfig.tcpPort).toBe(9999);
+
+      await executor.close();
+    });
+  });
+
+  // ── Property test: arbitrary valid modes are forwarded ────────
+
+  describe('Property: listenMode is always forwarded to StdioBus', () => {
+    const validModes: WorkerListenMode[] = ['none', 'tcp', 'unix'];
+
+    it('forwards every supported listen mode value', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.constantFrom(...validModes), async (mode) => {
+          MockStdioBus.mockClear();
+          capturedBusConfig = null;
+          mockBusInstance.start.mockClear();
+          mockBusInstance.stop.mockClear();
+
+          const executor = createSilentWorkerExecutor({ listenMode: mode });
+          executor.addWorker({ id: 'w1', command: 'node', args: ['w.js'] });
+
+          await executor.start();
+
+          expect(capturedBusConfig.listenMode).toBe(mode);
+
+          await executor.close();
+        }),
+        { numRuns: 20 },
+      );
     });
   });
 });

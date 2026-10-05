@@ -744,3 +744,329 @@ describe('InProcessExecutor — Session TTL and Idle Expiry', () => {
     await executor.close();
   });
 });
+
+// ─── Additional Coverage Tests ────────────────────────────────────
+// Covers lines: 69, 121, 200, 301-304, 386, 396-417
+
+describe('InProcessExecutor — Additional Coverage', () => {
+  // ── Line 69: register() rejects agent with neither prompt() nor stream() ──
+  it('register() throws BridgeError CONFIG when agent has neither prompt() nor stream() (line 69)', () => {
+    const executor = createSilentExecutor();
+
+    const badAgent: AgentHandler = {
+      id: 'no-methods-agent',
+      // no prompt, no stream
+    };
+
+    expect(() => executor.register(badAgent)).toThrow(BridgeError);
+
+    try {
+      executor.register(badAgent);
+    } catch (err) {
+      expect((err as BridgeError).type).toBe('CONFIG');
+      expect((err as BridgeError).message).toContain('no-methods-agent');
+    }
+  });
+
+  // ── Line 121: isReady() returns true/false correctly ──────────────
+  it('isReady() returns false before start and true after start (line 121)', async () => {
+    const executor = createSilentExecutor();
+
+    expect(executor.isReady()).toBe(false);
+
+    await executor.start();
+    expect(executor.isReady()).toBe(true);
+
+    await executor.close();
+    expect(executor.isReady()).toBe(false);
+  });
+
+  // ── Line 200: createSession re-throws BridgeError from onSessionCreate ──
+  it('createSession re-throws BridgeError thrown by onSessionCreate without wrapping (line 200)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const configError = BridgeError.config('Session setup failed — bad config');
+    const agent = createMockAgent('bridgeerr-hook-agent', [], {
+      onSessionCreate: jest.fn<any>().mockRejectedValue(configError),
+    });
+    executor.register(agent);
+
+    try {
+      await executor.createSession('bridgeerr-hook-agent');
+      expect(true).toBe(false); // should not reach
+    } catch (err) {
+      expect(err).toBeInstanceOf(BridgeError);
+      // Must be the ORIGINAL BridgeError, not re-wrapped as UPSTREAM
+      expect((err as BridgeError).type).toBe('CONFIG');
+      expect((err as BridgeError).message).toBe('Session setup failed — bad config');
+      expect(err).toBe(configError); // exact same object
+    }
+
+    // Session must have been cleaned up (not leaked)
+    const health = await executor.health();
+    expect(health.sessions.active).toBe(0);
+
+    await executor.close();
+  });
+
+  // ── Lines 301-302: stream-only agent is auto-collected via collectStream ──
+  it('prompt() auto-collects stream when agent implements only stream() (lines 301-302)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const expectedResult: AgentResult = { text: 'streamed text', stopReason: 'end_turn' };
+
+    // Agent with ONLY stream() — no prompt()
+    const streamAgent: AgentHandler = {
+      id: 'stream-only-agent',
+      stream: jest.fn<any>().mockImplementation(async function* () {
+        yield { type: 'final' as const, result: expectedResult };
+      }),
+    };
+    executor.register(streamAgent);
+
+    const session = await executor.createSession('stream-only-agent');
+    const result = await executor.prompt(session.sessionId, 'hello');
+
+    expect(result).toEqual(expectedResult);
+
+    await executor.close();
+  });
+
+  // ── Lines 303-304: agent with neither prompt() nor stream() throws INTERNAL ──
+  it('prompt() throws BridgeError INTERNAL when agent has neither prompt() nor stream() (lines 303-304)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    // Register agent with prompt first (to pass register() validation)
+    // then swap out the method to simulate runtime case
+    const agent = createMockAgent('switchy-agent');
+    executor.register(agent);
+
+    // Remove prompt after registration to hit the else branch
+    delete (agent as any).prompt;
+    delete (agent as any).stream;
+
+    const session = await executor.createSession('switchy-agent');
+
+    try {
+      await executor.prompt(session.sessionId, 'test');
+      expect(true).toBe(false);
+    } catch (err) {
+      expect(err).toBeInstanceOf(BridgeError);
+      expect((err as BridgeError).type).toBe('INTERNAL');
+      expect((err as BridgeError).message).toContain('switchy-agent');
+    }
+
+    await executor.close();
+  });
+
+  // ── Line 386: resolveAgent throws CONFIG when no agents registered and no agentId ──
+  it('createSession with no agentId throws BridgeError CONFIG when no agents registered (line 386)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    // No agents registered — omit agentId to hit resolveAgent's fallback path
+    try {
+      await executor.createSession();
+      expect(true).toBe(false);
+    } catch (err) {
+      expect(err).toBeInstanceOf(BridgeError);
+      expect((err as BridgeError).type).toBe('CONFIG');
+      expect((err as BridgeError).message).toContain('No agents registered');
+    }
+
+    await executor.close();
+  });
+
+  // ── Lines 396-414: collectStream — chunk accumulation and final event ──
+  it('collectStream accumulates chunks and returns finalResult from final event (lines 396-414)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const finalResult: AgentResult = { text: 'from final', stopReason: 'end_turn' };
+
+    const streamAgent: AgentHandler = {
+      id: 'stream-chunks-agent',
+      stream: jest.fn<any>().mockImplementation(async function* () {
+        yield { type: 'chunk' as const, text: 'hello ' };
+        yield { type: 'chunk' as const, text: 'world' };
+        yield { type: 'final' as const, result: finalResult };
+      }),
+    };
+    executor.register(streamAgent);
+
+    const session = await executor.createSession('stream-chunks-agent');
+    const result = await executor.prompt(session.sessionId, 'test');
+
+    // finalResult wins over accumulated chunks
+    expect(result).toEqual(finalResult);
+
+    await executor.close();
+  });
+
+  // ── Line 417: collectStream — no final event, constructs from chunks ──
+  it('collectStream returns accumulated chunks when no final event is emitted (line 417)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const streamAgent: AgentHandler = {
+      id: 'stream-no-final-agent',
+      stream: jest.fn<any>().mockImplementation(async function* () {
+        yield { type: 'chunk' as const, text: 'part1 ' };
+        yield { type: 'chunk' as const, text: 'part2' };
+        // no 'final' event
+      }),
+    };
+    executor.register(streamAgent);
+
+    const session = await executor.createSession('stream-no-final-agent');
+    const result = await executor.prompt(session.sessionId, 'test');
+
+    expect(result.text).toBe('part1 part2');
+    expect(result.stopReason).toBe('end_turn');
+
+    await executor.close();
+  });
+
+  // ── Line 408: collectStream — error event throws ──────────────────
+  it('collectStream throws when stream emits an error event (line 408)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const streamAgent: AgentHandler = {
+      id: 'stream-error-agent',
+      stream: jest.fn<any>().mockImplementation(async function* () {
+        yield { type: 'chunk' as const, text: 'before error' };
+        yield { type: 'error' as const, message: 'stream blew up' };
+      }),
+    };
+    executor.register(streamAgent);
+
+    const session = await executor.createSession('stream-error-agent');
+
+    try {
+      await executor.prompt(session.sessionId, 'test');
+      expect(true).toBe(false);
+    } catch (err) {
+      // collectStream throws plain Error; prompt() catches and wraps it in BridgeError UPSTREAM
+      expect(err).toBeInstanceOf(BridgeError);
+      expect((err as BridgeError).type).toBe('UPSTREAM');
+      expect((err as BridgeError).message).toContain('stream-error-agent');
+    }
+
+    await executor.close();
+  });
+});
+
+describe('InProcessExecutor — Private method coverage', () => {
+  // ── Line 386: resolveAgent defensive guard (dead code via public API) ──
+  // createSession() has an earlier guard for agents.size === 0, so
+  // resolveAgent(undefined) with empty agents is only reachable directly.
+  it('resolveAgent() throws BridgeError CONFIG when agents map is empty and no agentId given (line 386)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    // Access private method directly to cover the defensive dead branch
+    const resolveAgent = (executor as any).resolveAgent.bind(executor) as (id?: string) => unknown;
+
+    expect(() => resolveAgent(undefined)).toThrow(BridgeError);
+
+    try {
+      resolveAgent(undefined);
+    } catch (err) {
+      expect((err as BridgeError).type).toBe('CONFIG');
+      expect((err as BridgeError).message).toContain('No agents registered');
+    }
+
+    await executor.close();
+  });
+});
+
+describe('InProcessExecutor — Branch coverage', () => {
+  // ── Line 138: agent.capabilities ?? [] when capabilities is undefined ──
+  it('discover() handles agent without capabilities property (line 138 ?? branch)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    // Agent without capabilities field — triggers `agent.capabilities ?? []`
+    const agent: AgentHandler = {
+      id: 'no-caps-agent',
+      prompt: jest.fn<any>().mockResolvedValue({ text: 'ok', stopReason: 'end_turn' }),
+      // no capabilities property
+    };
+    executor.register(agent);
+
+    const all = await executor.discover();
+    expect(all).toHaveLength(1);
+    expect(all[0]!.capabilities).toEqual([]);
+
+    // Filter by capability — agent has no caps so it won't match
+    const filtered = await executor.discover('chat');
+    expect(filtered).toHaveLength(0);
+
+    await executor.close();
+  });
+
+  // ── Line 205: onSessionCreate throws non-Error value ──────────────
+  it('createSession wraps non-Error thrown by onSessionCreate in new Error (line 205 right branch)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const agent = createMockAgent('non-error-hook-agent', [], {
+      // Throw a plain string — not an Error instance
+      onSessionCreate: jest.fn<any>().mockRejectedValue('hook failure string'),
+    });
+    executor.register(agent);
+
+    try {
+      await executor.createSession('non-error-hook-agent');
+      expect(true).toBe(false);
+    } catch (err) {
+      expect(err).toBeInstanceOf(BridgeError);
+      expect((err as BridgeError).type).toBe('UPSTREAM');
+      // Cause is wrapped as new Error(String(err)) — not the original string
+      expect((err as BridgeError).cause).toBeInstanceOf(Error);
+      expect((err as BridgeError).cause?.message).toBe('hook failure string');
+    }
+
+    await executor.close();
+  });
+
+  // ── Line 320: prompt() error catch wraps non-Error in new Error ───
+  it('prompt() wraps non-Error thrown by agent.prompt in new Error (line 320 right branch)', async () => {
+    const executor = createSilentExecutor();
+    await executor.start();
+
+    const agent = createMockAgent('non-error-prompt-agent', [], {
+      // Throw a plain number — not an Error instance
+      prompt: jest.fn<any>().mockRejectedValue(42),
+    });
+    executor.register(agent);
+
+    const session = await executor.createSession('non-error-prompt-agent');
+
+    try {
+      await executor.prompt(session.sessionId, 'test');
+      expect(true).toBe(false);
+    } catch (err) {
+      expect(err).toBeInstanceOf(BridgeError);
+      expect((err as BridgeError).type).toBe('UPSTREAM');
+      expect((err as BridgeError).cause).toBeInstanceOf(Error);
+      expect((err as BridgeError).cause?.message).toBe('42');
+    }
+
+    await executor.close();
+  });
+
+  // ── Line 355: health() uptime is 0 when executor is not ready ─────
+  it('health() returns uptime of 0 when executor is not started (line 355 false branch)', async () => {
+    const executor = createSilentExecutor();
+
+    // Not started — health() still works but uptime should be 0
+    const health = await executor.health();
+    expect(health.healthy).toBe(false);
+    expect(health.uptime).toBe(0);
+  });
+});

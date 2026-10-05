@@ -56,7 +56,9 @@ for test_file in \
   "$SCRIPT_DIR/factory-openai-live.e2e.ts" \
   "$SCRIPT_DIR/factory-anthropic-live.e2e.ts" \
   "$SCRIPT_DIR/factory-gemini-live.e2e.ts" \
-  "$SCRIPT_DIR/factory-multi-provider-live.e2e.ts"
+  "$SCRIPT_DIR/factory-multi-provider-live.e2e.ts" \
+  "$SCRIPT_DIR/factory-openai-responses-live.e2e.ts" \
+  "$SCRIPT_DIR/multimodal-live.e2e.ts"
 do
   test_name="$(basename "$test_file")"
 

@@ -65,7 +65,8 @@ export class InternalServerError extends Error {
 
 /**
  * Mock OpenAI class that mirrors the real SDK's interface.
- * `chat.completions.create` is a jest mock function.
+ * `chat.completions.create`, `responses.create`, `files.create`, and
+ * `files.delete` are jest mock functions.
  */
 class OpenAI {
   readonly apiKey: string;
@@ -74,6 +75,13 @@ class OpenAI {
       create: jest.Mock<any>;
     };
   };
+  readonly responses: {
+    create: jest.Mock<any>;
+  };
+  readonly files: {
+    create: jest.Mock<any>;
+    delete: jest.Mock<any>;
+  };
 
   constructor(opts: { apiKey: string }) {
     this.apiKey = opts.apiKey;
@@ -81,6 +89,19 @@ class OpenAI {
       completions: {
         create: jest.fn<any>(),
       },
+    };
+    const responsesCreate = jest.fn<any>();
+    responsesCreate.mockResolvedValue({
+      output_text: 'mock response',
+      status: 'completed',
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    this.responses = {
+      create: responsesCreate,
+    };
+    this.files = {
+      create: jest.fn<any>(),
+      delete: jest.fn<any>(),
     };
   }
 }

@@ -17,12 +17,68 @@
 
 // ── Message types ───────────────────────────────────────────────
 
-/** A single message in the standard chat format used across all providers. */
+// ── ContentPart discriminated union ────────────────────────────
+
+/** A plain-text content part. */
+export interface TextPart {
+  readonly type: 'text';
+  /** The text content of this part. */
+  readonly text: string;
+}
+
+/**
+ * An image URL content part.
+ *
+ * The optional `detail` field controls image resolution when the
+ * provider supports it (e.g., OpenAI vision models).
+ */
+export interface ImageUrlPart {
+  readonly type: 'image_url';
+  readonly image_url: { readonly url: string };
+  /** Image resolution hint forwarded to providers that support it. */
+  readonly detail?: 'low' | 'high' | 'original' | 'auto';
+}
+
+/**
+ * A file content part.
+ *
+ * At least one of `file_id`, `filename`, or `file_data` must be present
+ * at runtime. `file_data` is expected to be base64-encoded file content.
+ */
+export interface FilePart {
+  readonly type: 'file';
+  readonly file: {
+    /** Provider-assigned file identifier (from a prior FilesAPI.create call). */
+    readonly file_id?: string;
+    /** Original filename; may also be a URL (e.g., `https://...`) for URL-based access. */
+    readonly filename?: string;
+    /** Base64-encoded file content for inline upload. */
+    readonly file_data?: string;
+  };
+}
+
+/** Discriminated union of all supported multimodal content parts. */
+export type ContentPart = TextPart | ImageUrlPart | FilePart;
+
+// ── ChatMessage ─────────────────────────────────────────────────
+
+/**
+ * A single message in the standard chat format used across all providers.
+ *
+ * The `content` field is backward-compatible: existing `string` assignments
+ * continue to compile and behave identically. Pass `ContentPart[]` for
+ * multimodal (image / file) messages.
+ */
 export interface ChatMessage {
   /** The role of the message author. */
   role: 'system' | 'user' | 'assistant';
-  /** The textual content of the message. */
-  content: string;
+  /**
+   * The content of the message.
+   *
+   * - `string` — plain text (existing behavior, fully backward-compatible).
+   * - `ContentPart[]` — multimodal parts (text, images, files).
+   */
+  content: string | ContentPart[];
 }
 
 // ── Runtime parameters ──────────────────────────────────────────
@@ -53,6 +109,12 @@ export interface RuntimeParams {
   stopSequences?: string[];
   /** System prompt to use for this request. */
   systemPrompt?: string;
+  /**
+   * Image resolution detail hint.
+   * Forwarded to providers that support it (OpenAI Chat Completions vision,
+   * OpenAI Responses). Silently ignored by providers that do not support it.
+   */
+  detail?: 'low' | 'high' | 'original' | 'auto';
   /**
    * Provider-specific parameters not covered by common fields.
    * Unsupported keys are silently ignored by the provider.
@@ -120,6 +182,66 @@ export interface ProviderCapabilities {
   vision?: boolean;
   /** Whether the provider supports structured JSON output mode. */
   jsonMode?: boolean;
+  /** Whether the provider exposes a FilesAPI for server-side file management. */
+  files?: boolean;
+}
+
+// ── FilesAPI types ──────────────────────────────────────────────
+
+/**
+ * Parameters for creating a provider-side file.
+ *
+ * Passed to {@link FilesAPI.create} to upload a file to the provider's
+ * server-side file storage.
+ */
+export interface FileCreateParams {
+  /** The filename to associate with the uploaded file. */
+  readonly filename: string;
+  /** File content as raw bytes or a UTF-8 string. */
+  readonly content: Uint8Array | string;
+  /** MIME type of the file (e.g., `'application/pdf'`, `'image/png'`). */
+  readonly mimeType: string;
+}
+
+/**
+ * Value object returned by a successful file upload.
+ *
+ * The `fileId` can be referenced in subsequent {@link FilePart} instances
+ * to avoid re-uploading the same file in every request.
+ */
+export interface UploadedFile {
+  /** Provider-assigned file identifier. */
+  readonly fileId: string;
+  /** Filename as stored by the provider. */
+  readonly filename: string;
+}
+
+/**
+ * Provider-side file management namespace.
+ *
+ * Present only on providers that support server-side file storage
+ * (e.g., {@link OpenAIResponsesProvider}). Check `provider.files !== undefined`
+ * before use.
+ */
+export interface FilesAPI {
+  /**
+   * Upload a file to the provider's file storage.
+   *
+   * @param params - File content and metadata.
+   * @param signal - Optional AbortSignal for cooperative cancellation.
+   * @returns A value object carrying the provider-assigned `fileId` and `filename`.
+   * @throws {BridgeError} With category `UPSTREAM` on provider-level error.
+   */
+  create(params: FileCreateParams, signal?: AbortSignal): Promise<UploadedFile>;
+
+  /**
+   * Delete a previously uploaded file from the provider's file storage.
+   *
+   * @param fileId - The provider-assigned file identifier to delete.
+   * @param signal - Optional AbortSignal for cooperative cancellation.
+   * @throws {BridgeError} With category `UPSTREAM` on provider-level error.
+   */
+  delete(fileId: string, signal?: AbortSignal): Promise<void>;
 }
 
 // ── AIProvider interface ────────────────────────────────────────
@@ -142,6 +264,14 @@ export interface AIProvider {
 
   /** Self-reported capabilities of this provider. */
   readonly capabilities?: ProviderCapabilities;
+
+  /**
+   * Optional file management namespace.
+   *
+   * Present only on providers that support server-side file storage.
+   * Check `provider.files !== undefined` before invoking any `FilesAPI` method.
+   */
+  readonly files?: FilesAPI;
 
   /**
    * Send a completion request to the AI service.
@@ -182,7 +312,7 @@ export function mergeRuntimeParams(
 
   // Scalar fields: prompt > session > config
   const scalarKeys = [
-    'model', 'temperature', 'maxTokens', 'topP', 'topK', 'stopSequences', 'systemPrompt',
+    'model', 'temperature', 'maxTokens', 'topP', 'topK', 'stopSequences', 'systemPrompt', 'detail',
   ] as const;
 
   for (const key of scalarKeys) {

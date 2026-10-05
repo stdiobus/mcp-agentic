@@ -27,7 +27,7 @@ import {
 } from './_helpers.js';
 import { OpenAIProvider } from '../../../src/provider/providers/OpenAIProvider.js';
 import { ProviderRegistry } from '../../../src/provider/ProviderRegistry.js';
-import { MultiProviderAgent } from 'src/agent/MultiProviderAgent';
+import { MultiProviderAgent } from '../../../src/agent/MultiProviderAgent.js';
 
 // ── Skip if no API key ──────────────────────────────────────────
 

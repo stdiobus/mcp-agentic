@@ -31,6 +31,7 @@ import type { AgentHandler, Agent } from '../agent/AgentHandler.js';
 import type { AgentExecutor } from '../executor/AgentExecutor.js';
 import type { WorkerConfig } from '../executor/types.js';
 import type { RuntimeParams } from '../provider/AIProvider.js';
+import type { WorkerListenMode } from '../executor/WorkerExecutor.js';
 import { InProcessExecutor } from '../executor/InProcessExecutor.js';
 import { WorkerExecutor } from '../executor/WorkerExecutor.js';
 import { BridgeError } from '../errors/BridgeError.js';
@@ -86,6 +87,32 @@ export interface McpAgenticServerConfig {
   maxMetadataBytes?: number;
   /** When true, suppresses process.stderr.write logging from executors. Default: false. */
   silent?: boolean;
+
+  // ── Worker transport / listen mode ──────────────────────────────
+  //
+  // Applied to the single WorkerExecutor instance created by registerWorker().
+  // One StdioBus daemon = one listenMode, so these are server-level settings.
+
+  /**
+   * StdioBus listen mode for the worker executor.
+   * - `'none'` (default) — workers communicate via internal pipes only.
+   * - `'tcp'`  — enables a TCP listener; also set `workerTcpHost` / `workerTcpPort`.
+   * - `'unix'` — enables a Unix socket listener; also set `workerUnixPath`.
+   */
+  workerListenMode?: WorkerListenMode;
+  /**
+   * TCP host to bind when `workerListenMode` is `'tcp'`.
+   * Default: StdioBus decides (typically `'127.0.0.1'`).
+   */
+  workerTcpHost?: string;
+  /**
+   * TCP port to bind when `workerListenMode` is `'tcp'`.
+   */
+  workerTcpPort?: number;
+  /**
+   * Unix socket path to bind when `workerListenMode` is `'unix'`.
+   */
+  workerUnixPath?: string;
 }
 
 // ─── McpAgenticServer ────────────────────────────────────────────
@@ -156,14 +183,29 @@ export class McpAgenticServer {
 
   /**
    * Register an external worker process.
-   * Lazily creates the WorkerExecutor on first call.
+   * Lazily creates the WorkerExecutor on first call, applying any transport
+   * options from {@link McpAgenticServerConfig} (listenMode, tcpHost, etc.).
    *
    * @param config - Worker process configuration (command, args, env).
    * @returns `this` for method chaining.
    */
   registerWorker(config: WorkerConfig): McpAgenticServer {
     if (!this.worker) {
-      this.worker = new WorkerExecutor({ silent: this._config.silent ?? false });
+      this.worker = new WorkerExecutor({
+        silent: this._config.silent ?? false,
+        ...(this._config.workerListenMode !== undefined
+          ? { listenMode: this._config.workerListenMode }
+          : {}),
+        ...(this._config.workerTcpHost !== undefined
+          ? { tcpHost: this._config.workerTcpHost }
+          : {}),
+        ...(this._config.workerTcpPort !== undefined
+          ? { tcpPort: this._config.workerTcpPort }
+          : {}),
+        ...(this._config.workerUnixPath !== undefined
+          ? { unixPath: this._config.workerUnixPath }
+          : {}),
+      });
     }
     this.worker.addWorker(config);
     this.agentExecutorCache.clear();
