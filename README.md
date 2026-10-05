@@ -1,7 +1,8 @@
 <h1 align="center">MCP Agentic — Multi-Agent Orchestration Server</h1>
 
 <p align="center">
-  Agent orchestration server that connects MCP clients to ACP-compatible agents through <a href="https://stdiobus.com">stdio Bus</a>.
+  Agent orchestration server that connects MCP clients to ACP-compatible agents through <a href="https://stdiobus.com">stdio Bus</a>.<br/>
+  In-process agents, external workers, multi-provider AI — all through 8 MCP tools.
 </p>
 
 <p align="center">
@@ -18,36 +19,39 @@
   <a href="https://github.com/stdiobus/mcp-agentic"><img src="https://img.shields.io/badge/e2e-86%20passing-brightgreen?style=for-the-badge&logo=playwright" alt="E2E"></a>
 </p>
 
-Agents run in-process (via `AgentHandler`) or as external worker processes (via `@stdiobus/node` StdioBus). The single entry point is `McpAgenticServer`, which owns the MCP server, tool registration, and executor lifecycle.
+---
 
-> **This is a public sandbox for a broader agent infrastructure platform.**
-> The repository serves as an open proving ground for experimenting with MCP-accessible ACP agent orchestration, validating protocol integrations, and stress-testing runtime boundaries before selected capabilities are considered for the broader stdio Bus ecosystem.
->
-> Contributions, forks, and production experiments are welcome.
+## What it does
 
-## Features
+`@stdiobus/mcp-agentic` exposes a set of **MCP tools** that let any MCP-compatible client (Kiro, Claude Desktop, Cursor, custom agents) delegate work to AI agents — in-process or external.
 
-- **Provider Factory API** — declarative `openAI()`, `anthropic()`, `gemini()` factories with Zod validation and `createMultiProviderAgent()` helper
-- **Custom providers** — `defineProvider()` contract for third-party and private LLM integrations with discoverable metadata
-- **Enriched discovery** — `agents_discover` returns provider kind, capabilities, displayName, and description
-- **In-process agents** — implement `AgentHandler` and register directly
-- **Worker agents** — route to external ACP processes via stdio Bus
-- **Multi-provider AI** — OpenAI, Anthropic, Google Gemini through native SDKs with a unified `AIProvider` interface
-- **Runtime parameter control** — dynamically adjust model, temperature, systemPrompt, and more through MCP tools on every request
-- **Provider discovery** — discover available providers and their models via `agents_discover`
-- **8 MCP tools** — health, discovery, sessions, cancellation, one-shot delegation
-- **Session management** — TTL, idle expiry, lifecycle hooks
-- **Backpressure** — configurable concurrent request limiting
-- **Input validation** — prompt and metadata size limits
-- **Typed errors** — `BridgeError` categories with retryability info
+You implement an agent, register it, start the server. Your MCP client calls `tasks_delegate` or `sessions_prompt`. The server routes the request to the right agent, returns the result. That's the loop.
 
-## Basic Quick Start
+The multi-provider layer lets you serve OpenAI, Anthropic, and Gemini through a single server with per-session and per-prompt model switching, runtime parameter overrides, multimodal content, and the OpenAI Responses API.
 
-Create a custom entry point that registers your agents before starting the server:
+> **Sandbox note:** This repository is an open proving ground for MCP/ACP agent orchestration. The architecture validates protocol integrations and runtime boundaries before capabilities move into the broader stdio Bus ecosystem. Production use, contributions, and forks are all welcome.
+
+---
+
+## Install
 
 ```bash
 npm install @stdiobus/mcp-agentic
 ```
+
+Install only the provider SDKs you actually need:
+
+```bash
+npm install openai                  # OpenAI Chat Completions + Responses API
+npm install @anthropic-ai/sdk       # Anthropic Claude
+npm install @google/generative-ai   # Google Gemini
+```
+
+---
+
+## Quick start: custom agent
+
+The minimal path — implement `AgentHandler`, register it, start the server:
 
 ```typescript
 import { McpAgenticServer } from '@stdiobus/mcp-agentic';
@@ -64,16 +68,13 @@ const server = new McpAgenticServer({ defaultAgentId: 'my-agent' })
 await server.start();
 ```
 
-This is the primary usage path. Without `register()` calls, no agents are available and delegation tools (`tasks_delegate`, `sessions_create`, etc.) will fail.
+Without `register()` calls the server starts but no agents are available — `tasks_delegate` and `sessions_*` tools will fail. The CLI binary (`npx @stdiobus/mcp-agentic`) demonstrates this: useful for verifying transport, not for delegating work.
 
-## Multi-Provider Quick Start
+---
 
-Use the factory API to serve multiple AI providers through a single MCP server. Install the provider SDKs you need:
+## Quick start: multi-provider AI
 
-```bash
-npm install @stdiobus/mcp-agentic
-npm install openai @anthropic-ai/sdk @google/generative-ai
-```
+Connect OpenAI, Anthropic, and Gemini to a single server. MCP clients switch providers per session, override model and parameters per prompt:
 
 ```typescript
 import {
@@ -112,22 +113,114 @@ const server = new McpAgenticServer({ defaultAgentId: 'multi-ai' })
 await server.start();
 ```
 
-MCP clients can then select a provider per session and override parameters per prompt:
+MCP tool calls from that point:
 
 ```jsonc
-// Create a session with Anthropic
+// Pick a provider when creating the session
 { "tool": "sessions_create", "arguments": { "agentId": "multi-ai", "metadata": { "provider": "anthropic", "runtimeParams": { "model": "claude-sonnet-4-20250514" } } } }
 
-// Send a prompt with runtime parameter overrides
-{ "tool": "sessions_prompt", "arguments": { "sessionId": "...", "prompt": "Explain MCP", "runtimeParams": { "temperature": 0.3, "maxTokens": 200 } } }
+// Override parameters per prompt
+{ "tool": "sessions_prompt", "arguments": { "sessionId": "...", "prompt": "Explain MCP", "runtimeParams": { "temperature": 0.3, "maxTokens": 500 } } }
 
-// One-shot delegation with a specific provider
+// One-shot with a specific provider
 { "tool": "tasks_delegate", "arguments": { "prompt": "Summarize this", "metadata": { "provider": "google-gemini" }, "runtimeParams": { "temperature": 0 } } }
 ```
 
-## Custom Providers with defineProvider
+---
 
-Use `defineProvider()` to create custom providers with Zod-validated options and discoverable metadata:
+## Multimodal content
+
+`ChatMessage.content` accepts `string | ContentPart[]`. All three built-in providers map content parts to their native SDK shapes.
+
+```typescript
+import type { ChatMessage, ContentPart } from '@stdiobus/mcp-agentic';
+
+// Text + image in one message
+const message: ChatMessage = {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'Describe this diagram' },
+    { type: 'image_url', image_url: { url: 'https://example.com/diagram.png' }, detail: 'high' },
+  ],
+};
+
+// File reference (by server-side file_id from Files API)
+const fileMessage: ChatMessage = {
+  role: 'user',
+  content: [
+    { type: 'text', text: 'Summarize this document' },
+    { type: 'file', file: { file_id: 'file-abc123' } },
+  ],
+};
+```
+
+Content part types:
+
+| Type | Fields | Notes |
+|------|--------|-------|
+| `text` | `text: string` | Plain text part |
+| `image_url` | `image_url.url`, optional `detail` | `detail`: `low` \| `high` \| `original` \| `auto` |
+| `file` | `file.file_id` or `file.filename` or `file.file_data` | `file_data` is base64-encoded |
+
+---
+
+## OpenAI Responses API
+
+`OpenAIResponsesProvider` targets the OpenAI `/v1/responses` endpoint exclusively — it never calls `/v1/chat/completions`. Use it when you need native Responses API features (input files, structured output, stateful sessions):
+
+```typescript
+import {
+  McpAgenticServer,
+  openAIResponses,
+  createMultiProviderAgent,
+} from '@stdiobus/mcp-agentic';
+
+const agent = createMultiProviderAgent({
+  id: 'responses-agent',
+  defaultProviderId: 'openai-responses',
+  providers: [
+    openAIResponses({
+      apiKey: process.env.OPENAI_API_KEY!,
+      models: ['gpt-4o', 'o4-mini'],
+    }),
+  ],
+});
+
+const server = new McpAgenticServer({ defaultAgentId: 'responses-agent' })
+  .register(agent);
+
+await server.start();
+```
+
+Use alongside the Files API to upload a file and reference it in a prompt:
+
+```typescript
+import { OpenAIResponsesProvider, openAIResponses } from '@stdiobus/mcp-agentic';
+
+const provider = openAIResponses({ apiKey: process.env.OPENAI_API_KEY!, models: ['gpt-4o'] });
+
+// Upload a file
+const uploaded = await provider.files.create({
+  filename: 'report.pdf',
+  file_data: base64Content,
+  mime_type: 'application/pdf',
+});
+
+// Reference it in a multimodal message
+const message = {
+  role: 'user' as const,
+  content: [
+    { type: 'text' as const, text: 'Summarize this report' },
+    { type: 'file' as const, file: { file_id: uploaded.id } },
+  ],
+};
+```
+
+---
+
+## Custom providers with `defineProvider`
+
+Create a provider for any LLM endpoint with Zod-validated options and discoverable metadata:
 
 ```typescript
 import { z } from 'zod';
@@ -170,129 +263,167 @@ const agent = createMultiProviderAgent({
 });
 ```
 
-The factory function returned by `defineProvider` exposes static metadata for introspection:
+Static metadata is available for introspection and JSON Schema generation:
 
 ```typescript
-myLLM.id;           // 'my-llm'
-myLLM.kind;         // 'llm'
-myLLM.displayName;  // 'My Custom LLM'
-myLLM.description;  // 'Internal LLM service'
-myLLM.capabilities; // { streaming: false, tools: false, vision: false, jsonMode: true }
-myLLM.schema;       // Zod schema — use for JSON Schema generation
+myLLM.id           // 'my-llm'
+myLLM.kind         // 'llm'
+myLLM.displayName  // 'My Custom LLM'
+myLLM.capabilities // { streaming: false, tools: false, vision: false, jsonMode: true }
+myLLM.schema       // Zod schema
 ```
 
-When registered, `agents_discover` automatically includes `displayName`, `description`, `kind`, and `capabilities` for custom providers.
+`agents_discover` automatically surfaces `displayName`, `description`, `kind`, and `capabilities` for custom providers.
 
-<details>
-<summary>Advanced: Low-Level Class-Based API (deprecated)</summary>
+---
 
-> **Deprecation notice:** The class-based API (`new OpenAIProvider()`, `new AnthropicProvider()`, `new GoogleGeminiProvider()`) is deprecated. Use the factory functions `openAI()`, `anthropic()`, `gemini()` instead. Manual `ProviderRegistry` + `MultiProviderCompanionAgent` wiring is replaced by `createMultiProviderAgent()`.
+## External worker agents
+
+Route to ACP-compatible processes (Python, Go, any language) via stdio Bus:
 
 ```typescript
-import { McpAgenticServer, ProviderRegistry, OpenAIProvider, AnthropicProvider, GoogleGeminiProvider, MultiProviderCompanionAgent } from '@stdiobus/mcp-agentic';
-
-// 1. Create providers with credentials from environment variables
-const registry = new ProviderRegistry();
-
-registry.register(new OpenAIProvider({
-  credentials: { apiKey: process.env.OPENAI_API_KEY! },
-  models: ['gpt-4o', 'gpt-4o-mini'],
-}));
-
-registry.register(new AnthropicProvider({
-  credentials: { apiKey: process.env.ANTHROPIC_API_KEY! },
-  models: ['claude-sonnet-4-20250514'],
-}));
-
-registry.register(new GoogleGeminiProvider({
-  credentials: { apiKey: process.env.GOOGLE_AI_API_KEY! },
-  models: ['gemini-2.0-flash'],
-}));
-
-// 2. Create a multi-provider agent
-const agent = new MultiProviderCompanionAgent({
-  id: 'multi-ai',
-  defaultProviderId: 'openai',
-  registry,
-  systemPrompt: 'You are a helpful assistant.',
+server.registerWorker({
+  id: 'py-agent',
+  command: 'python',
+  args: ['agent.py'],
+  env: { API_KEY: process.env.API_KEY },
+  capabilities: ['data-analysis'],
+  // Optional transport overrides
+  workerTcpHost: '127.0.0.1',
+  workerTcpPort: 9000,
 });
-
-// 3. Register and start
-const server = new McpAgenticServer({ defaultAgentId: 'multi-ai' })
-  .register(agent);
-
-await server.start();
 ```
 
-</details>
+In-process agents always take priority when an agent ID exists in both executors.
 
-## CLI Reference Server
+---
 
-The published binary (`npx @stdiobus/mcp-agentic`) starts a server with **no agents registered**. It is useful for:
+## MCP tools reference
 
-- Verifying MCP connectivity (`bridge_health`)
-- Inspecting the tool schema (`agents_discover` returns an empty list)
-- Confirming the transport layer works end-to-end
+| Tool | Description |
+|------|-------------|
+| `bridge_health` | Check bridge readiness |
+| `agents_discover` | List agents; optionally filter by capability. Returns enriched `providers` field with `id`, `models`, `kind`, `capabilities`, `displayName`, `description` |
+| `sessions_create` | Create a session. Pass `metadata.provider` to bind a provider; `metadata.runtimeParams` for session-level defaults |
+| `sessions_prompt` | Send a prompt. Accepts `runtimeParams` for per-prompt overrides (model, temperature, systemPrompt, maxTokens, etc.) |
+| `sessions_status` | Check session status |
+| `sessions_close` | Close a session |
+| `sessions_cancel` | Cancel an in-flight prompt |
+| `tasks_delegate` | One-shot: create + prompt + close in a single call |
 
-It **cannot delegate work** — `tasks_delegate`, `sessions_create`, and `sessions_prompt` will fail because there are no agents to handle requests. For production use, create a custom entry point with `server.register()` calls as shown in Quick Start above.
+### `agents_discover` response shape
 
-The `mcp.json` shipped with this package references the CLI binary and is provided as a template. Copy and adapt it to point at your own server script.
+```json
+{
+  "agents": [{
+    "id": "multi-ai",
+    "capabilities": ["chat"],
+    "status": "ready",
+    "providers": [
+      {
+        "id": "openai",
+        "models": ["gpt-4o"],
+        "kind": "llm",
+        "capabilities": { "streaming": true, "tools": true, "vision": true, "jsonMode": true },
+        "displayName": "OpenAI",
+        "description": "OpenAI GPT models via official openai npm SDK"
+      }
+    ]
+  }]
+}
+```
+
+---
+
+## Runtime parameters
+
+Three-level merge, ascending priority:
+
+```
+ProviderConfig.defaults  →  session metadata.runtimeParams  →  prompt-level runtimeParams
+```
+
+Only defined fields override lower-priority values. `providerSpecific` is shallow-merged across all layers.
+
+```typescript
+interface RuntimeParams {
+  model?: string;
+  temperature?: number;       // 0–2
+  maxTokens?: number;
+  topP?: number;              // 0–1
+  topK?: number;
+  stopSequences?: string[];
+  systemPrompt?: string;
+  detail?: 'low' | 'high' | 'original' | 'auto';   // image resolution hint
+  providerSpecific?: Record<string, unknown>;
+}
+```
+
+---
+
+## Server configuration
+
+```typescript
+interface McpAgenticServerConfig {
+  agents?: AgentHandler[];          // Register agents at construction time
+  defaultAgentId?: string;          // Default agent when none specified
+  maxConcurrentRequests?: number;   // Default: 50
+  maxPromptBytes?: number;          // Default: 1 MiB (1048576)
+  maxMetadataBytes?: number;        // Default: 64 KiB (65536)
+}
+```
+
+---
 
 ## Architecture
 
 ```mermaid
 %%{init: {'theme':'dark', 'themeVariables':{'edgeLabelBackground':'#1a1a2e','lineColor':'#4a90e2','textColor':'#ddd'}}}%%
 graph LR
-    C[MCP Client] -->|MCP tools| S[McpAgenticServer] --> IPE[InProcessExecutor]
-    IPE -->|AgentHandler| MCA[MultiProviderCompanionAgent]
+    C[MCP Client] -->|8 MCP tools| S[McpAgenticServer]
+    S --> IPE[InProcessExecutor]
+    S --> WE[WorkerExecutor]
 
-    subgraph FAC ["Factory API (recommended)"]
-        DP[defineProvider] --> OF[openAI]
-        DP --> AF[anthropic]
-        DP --> GF[gemini]
-        DP -->|custom| CP["yourProvider()"]
-        CMPA[createMultiProviderAgent] -->|creates| PR
-        CMPA -->|creates| MCA
+    IPE -->|AgentHandler| MCA[MultiProviderAgent]
+    WE -->|ACP / StdioBus| EXT[External Worker Process]
+
+    subgraph FAC ["Factory API"]
+        openAI --> OP[OpenAIProvider]
+        anthropic --> AP[AnthropicProvider]
+        gemini --> GP[GoogleGeminiProvider]
+        openAIResponses --> RP[OpenAIResponsesProvider]
+        defineProvider --> CP[Custom AIProvider]
+        createMultiProviderAgent -->|wires| PR[ProviderRegistry]
+        createMultiProviderAgent -->|creates| MCA
     end
 
-    MCA --> PR[ProviderRegistry]
-    PR --> OP[OpenAIProvider] --> OSDK[openai]
-    PR --> AP[AnthropicProvider] --> ASDK["@anthropic-ai/sdk"]
-    PR --> GP[GoogleGeminiProvider] --> GSDK["@google/generative-ai"]
-    PR --> CPI["Custom AIProvider"] --> CSDK["Any LLM endpoint"]
-    OF -->|new| OP
-    AF -->|new| AP
-    GF -->|new| GP
-    CP -->|new| CPI
+    MCA --> PR
+    PR --> OP & AP & GP & RP & CP
 
-    %% ── Styles ──
     classDef client fill:#1a1a2e,stroke:#f39c12,stroke-width:2px,color:#fff
     classDef kernel fill:#1a1a2e,stroke:#4a90e2,stroke-width:3px,color:#fff,font-weight:bold
-    classDef worker fill:#16213e,stroke:#50c878,stroke-width:2px,color:#fff
     classDef agent fill:#0f3460,stroke:#9b59b6,stroke-width:1px,color:#ddd
     classDef proxy fill:#16213e,stroke:#e67e22,stroke-width:2px,color:#fff
-    classDef external fill:#1a1a2e,stroke:#95a5a6,stroke-width:1px,color:#bbb,font-style:italic
+    classDef provider fill:#16213e,stroke:#50c878,stroke-width:2px,color:#fff
     classDef factory fill:#1a1a2e,stroke:#2ecc71,stroke-width:2px,color:#fff
-    classDef custom fill:#16213e,stroke:#1abc9c,stroke-width:2px,color:#fff,stroke-dasharray:5 5
+    classDef external fill:#1a1a2e,stroke:#95a5a6,stroke-width:1px,color:#bbb,font-style:italic
 
     class C client
-    class S,IPE kernel
+    class S,IPE,WE kernel
     class MCA agent
     class PR proxy
-    class OP,AP,GP worker
-    class OSDK,ASDK,GSDK external
-    class DP,OF,AF,GF,CMPA factory
-    class CP,CPI custom
-    class CSDK external
+    class OP,AP,GP,RP,CP provider
+    class openAI,anthropic,gemini,openAIResponses,defineProvider,createMultiProviderAgent factory
+    class EXT external
 
     style FAC fill:#1a1a2e,stroke:#2ecc71,stroke-width:2px,color:#ddd
 ```
 
 <details>
-<summary>Session lifecycle — create → prompt → close (in-process agent)</summary>
+<summary>Session lifecycle — create → prompt → close</summary>
 
 ```mermaid
-%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6'}}}%%
 sequenceDiagram
     participant C as MCP Client
     participant S as McpAgenticServer
@@ -300,112 +431,69 @@ sequenceDiagram
     participant A as AgentHandler
 
     C->>S: sessions_create({ agentId })
-    S->>S: validateMetadataSize()
-    S->>S: resolveExecutor(agentId)
     S->>E: createSession(agentId, metadata)
     E->>A: onSessionCreate(sessionId)
-    E-->>S: SessionEntry { sessionId, agentId, status }
-    S-->>C: { sessionId, agentId, status: "active" }
+    E-->>S: SessionEntry
+    S-->>C: { sessionId, status: "active" }
 
-    C->>S: sessions_prompt({ sessionId, prompt })
-    S->>S: validatePromptSize()
-    S->>S: resolveExecutorForSession(sessionId)
-    S->>E: prompt(sessionId, input)
+    C->>S: sessions_prompt({ sessionId, prompt, runtimeParams? })
+    S->>S: validatePromptSize + withBackpressure
+    S->>E: prompt(sessionId, input, opts)
     E->>A: prompt(sessionId, input, opts)
-    A-->>E: AgentResult { text, stopReason }
+    A-->>E: AgentResult
     E-->>S: AgentResult
-    S-->>C: { text, stopReason }
+    S-->>C: { text, stopReason, usage? }
 
     C->>S: sessions_close({ sessionId })
-    S->>S: resolveExecutorForSession(sessionId)
     S->>E: closeSession(sessionId)
     E->>A: onSessionClose(sessionId)
-    E-->>S: void
     S-->>C: { closed: true }
 ```
 
 </details>
 
 <details>
-<summary>sessions_prompt with runtimeParams — parameter merge and provider delegation</summary>
+<summary>RuntimeParams merge — provider → session → prompt</summary>
 
 ```mermaid
-%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6'}}}%%
 sequenceDiagram
     participant Client as MCP Client
     participant Server as McpAgenticServer
-    participant Executor as InProcessExecutor
-    participant Agent as MultiProviderCompanionAgent
-    participant Registry as ProviderRegistry
+    participant Agent as MultiProviderAgent
     participant Provider as AIProvider
 
     Client->>Server: sessions_prompt({ sessionId, prompt, runtimeParams })
-    Server->>Server: validatePromptSize + withBackpressure
-    Server->>Server: resolveExecutorForSession(sessionId)
-    Note over Server: If runtimeParams present, pass to<br/>agent.setPromptRuntimeParams()
-    Server->>Executor: prompt(sessionId, input, opts)
-    Executor->>Agent: prompt(sessionId, input, opts)
+    Server->>Agent: prompt(sessionId, input, opts)
     Agent->>Agent: merge(configDefaults, sessionParams, promptParams)
-    Agent->>Registry: get(resolvedProviderId)
-    Registry-->>Agent: provider instance
     Agent->>Provider: complete(messages, mergedParams, signal)
     Provider-->>Agent: AIProviderResult
     Agent->>Agent: append to conversation history
-    Agent-->>Executor: AgentResult
-    Executor-->>Server: AgentResult
-    Server-->>Client: MCP response
+    Agent-->>Server: AgentResult
+    Server-->>Client: { text, stopReason, usage? }
 ```
 
 </details>
 
 <details>
-<summary>sessions_create with provider selection — binding a session to a specific AI provider</summary>
+<summary>One-shot delegation — tasks_delegate</summary>
 
 ```mermaid
-%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
-sequenceDiagram
-    participant Client as MCP Client
-    participant Server as McpAgenticServer
-    participant Executor as InProcessExecutor
-    participant Agent as MultiProviderCompanionAgent
-
-    Client->>Server: sessions_create({ agentId, metadata: {<br/>provider: "anthropic",<br/>runtimeParams: { model: "claude-sonnet-4-20250514" } } })
-    Server->>Executor: createSession(agentId, metadata)
-    Executor->>Agent: onSessionCreate(sessionId, metadata)
-    Agent->>Agent: extract provider + runtimeParams from metadata
-    Agent->>Agent: validate provider exists in registry
-    Agent->>Agent: store SessionState with providerId + sessionParams
-    Agent-->>Executor: void
-    Executor-->>Server: SessionEntry
-    Server-->>Client: { sessionId, agentId, status }
-```
-
-</details>
-
-<details>
-<summary>One-shot delegation — tasks_delegate flow</summary>
-
-```mermaid
-%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6'}}}%%
 sequenceDiagram
     participant C as MCP Client
     participant S as McpAgenticServer
     participant E as AgentExecutor
     participant A as Agent
 
-    C->>S: tasks_delegate({ agentId, prompt })
-    S->>S: validatePromptSize()
-    S->>S: validateMetadataSize()
-    S->>S: resolveExecutor(agentId)
+    C->>S: tasks_delegate({ agentId, prompt, runtimeParams? })
     S->>E: createSession(agentId)
-    E-->>S: SessionEntry { sessionId }
+    E-->>S: SessionEntry
     S->>E: prompt(sessionId, input)
     E->>A: prompt(sessionId, input)
-    A-->>E: AgentResult { text, stopReason }
-    E-->>S: AgentResult
+    A-->>E: AgentResult
     S->>E: closeSession(sessionId, "task-complete")
-    E-->>S: void
-    S-->>C: { success: true, text, stopReason }
+    S-->>C: { text, stopReason, usage? }
 ```
 
 </details>
@@ -414,7 +502,7 @@ sequenceDiagram
 <summary>Worker path — external ACP process via StdioBus</summary>
 
 ```mermaid
-%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
+%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6'}}}%%
 sequenceDiagram
     participant C as MCP Client
     participant S as McpAgenticServer
@@ -423,7 +511,6 @@ sequenceDiagram
     participant P as ACP Worker Process
 
     C->>S: sessions_prompt({ sessionId, prompt })
-    S->>S: resolveExecutorForSession(sessionId)
     S->>W: prompt(sessionId, input)
     W->>B: bus.request("session/prompt", { sessionId, input })
     B->>P: JSON-RPC via stdin
@@ -436,269 +523,156 @@ sequenceDiagram
 
 </details>
 
-<details>
-<summary>Executor resolution — in-process priority and caching</summary>
+---
 
-```mermaid
-%%{init: {'theme':'dark', 'themeVariables':{'actorBkg':'#1a1a2e','actorBorder':'#4a90e2','actorTextColor':'#fff','signalColor':'#50c878','signalTextColor':'#ddd','noteBkgColor':'#16213e','noteTextColor':'#fff','noteBorderColor':'#e67e22','activationBkgColor':'#0f3460','activationBorderColor':'#9b59b6','sequenceNumberColor':'#f39c12'}}}%%
-sequenceDiagram
-    participant S as McpAgenticServer
-    participant Cache as agentExecutorCache
-    participant IP as InProcessExecutor
-    participant WE as WorkerExecutor
+## Using MCP Agentic in agentic cloud workflows
 
-    S->>Cache: get(agentId)
-    alt cache hit
-        Cache-->>S: executor
-    else cache miss
-        S->>IP: discover()
-        IP-->>S: AgentInfo[]
-        alt agent found in-process
-            S->>Cache: set(agentId, InProcessExecutor)
-            S-->>S: return InProcessExecutor
-        else not in-process
-            S->>WE: discover()
-            WE-->>S: AgentInfo[]
-            alt agent found in workers
-                S->>Cache: set(agentId, WorkerExecutor)
-                S-->>S: return WorkerExecutor
-            else not found anywhere
-                S-->>S: return InProcessExecutor (will throw "Agent not found")
-            end
-        end
-    end
-```
+MCP Agentic is designed to be the local delegation layer in multi-agent systems. A typical pattern for agentic cloud work:
 
-</details>
+**1. Kiro + companion agent (in-process)**
 
-## MCP Tools
-
-| Tool | Description | Notes |
-|------|-------------|-------|
-| `bridge_health` | Check bridge readiness | |
-| `agents_discover` | List available agents, optionally filter by capability | Response includes enriched `providers` field with `id`, `models`, `kind`, `capabilities`, `displayName`, and `description` for each provider |
-| `sessions_create` | Create a new agent session | Pass `metadata.provider` to select a provider; pass `metadata.runtimeParams` for session-level defaults |
-| `sessions_prompt` | Send a prompt to an existing session | Accepts optional `runtimeParams` for per-prompt overrides (model, temperature, systemPrompt, etc.) |
-| `sessions_status` | Check session status | |
-| `sessions_close` | Close a session | |
-| `sessions_cancel` | Cancel an in-flight prompt | |
-| `tasks_delegate` | One-shot delegation (create + prompt + close) | Accepts optional `runtimeParams` for parameter overrides; pass `metadata.provider` to select a provider |
-
-<details>
-<summary>Enriched agents_discover response example</summary>
+Run a multi-provider companion locally. Kiro routes tasks to it through MCP, switching providers per task type:
 
 ```json
 {
-  "agents": [{
-    "id": "multi-ai",
-    "capabilities": [],
-    "status": "ready",
-    "providers": [
-      {
-        "id": "openai",
-        "models": ["gpt-4o"],
-        "kind": "llm",
-        "capabilities": { "streaming": true, "tools": true, "vision": true, "jsonMode": true },
-        "displayName": "OpenAI",
-        "description": "OpenAI GPT models via official openai npm SDK"
-      },
-      {
-        "id": "anthropic",
-        "models": ["claude-sonnet-4-20250514"],
-        "kind": "llm",
-        "capabilities": { "streaming": true, "tools": true, "vision": true, "jsonMode": false },
-        "displayName": "Anthropic"
+  "mcpServers": {
+    "companion": {
+      "command": "npx",
+      "args": ["tsx", "examples/multi-provider-companion/multi-provider-companion.ts"],
+      "env": {
+        "OPENAI_API_KEY": "sk-...",
+        "ANTHROPIC_API_KEY": "sk-ant-...",
+        "GOOGLE_AI_API_KEY": "AIza..."
       }
-    ]
-  }]
+    }
+  }
 }
 ```
 
-Providers without `kind` default to `"llm"`. Providers without `capabilities` omit the field entirely.
+The companion is ready for `agents_discover` → `sessions_create` → `sessions_prompt` from any MCP client. Provider selection, model switching, and runtime parameter overrides work through MCP tool calls — no code changes needed.
 
-</details>
+**2. Specialized agents per domain**
 
-## Configuration
-
-`McpAgenticServer` accepts a `McpAgenticServerConfig`:
+Register multiple agents on the same server, each with its own capabilities. MCP clients filter by capability at discovery time:
 
 ```typescript
-interface McpAgenticServerConfig {
-  agents?: AgentHandler[];
-  defaultAgentId?: string;
-  maxConcurrentRequests?: number;  // default: 50
-  maxPromptBytes?: number;         // default: 1048576 (1 MiB)
-  maxMetadataBytes?: number;       // default: 65536 (64 KiB)
-}
+const server = new McpAgenticServer()
+  .register({ id: 'reviewer', capabilities: ['code-review'], async prompt(s, i) { /* ... */ } })
+  .register({ id: 'architect', capabilities: ['architecture'], async prompt(s, i) { /* ... */ } })
+  .registerWorker({ id: 'data-pipeline', command: 'python', args: ['pipeline.py'], capabilities: ['etl'] });
+
+await server.start();
 ```
 
-### Worker registration
+```
+agents_discover({ capability: "code-review" }) → [{ id: "reviewer", ... }]
+```
+
+**3. Multi-model analysis pipelines**
+
+Use session continuity and provider switching to run the same problem through multiple models, accumulating context:
+
+```
+sessions_create({ agentId: "multi-ai", metadata: { provider: "openai" } })
+sessions_prompt({ sessionId: "s1", prompt: "Analyze this architecture for risks" })
+// Switch to Anthropic for a second opinion in the same conversation context
+sessions_prompt({ sessionId: "s1", prompt: "Now critique that analysis from a security perspective", runtimeParams: { model: "claude-sonnet-4-20250514" } })
+```
+
+**4. File analysis with the Responses API**
+
+Upload files once, reference by ID across prompts. Useful for long documents, code reviews, or batch processing:
 
 ```typescript
-server.registerWorker({
-  id: 'py-agent',
-  command: 'python',
-  args: ['agent.py'],
-  env: { API_KEY: process.env.API_KEY },
-  capabilities: ['data-analysis'],
+// Upload once
+const file = await provider.files.create({ filename: 'spec.pdf', file_data: base64pdf, mime_type: 'application/pdf' });
+
+// Reference in any subsequent prompt
+sessions_prompt({
+  sessionId: "...",
+  prompt: "What are the acceptance criteria?",
+  // file_id passed through runtimeParams.providerSpecific or directly in message content
 });
 ```
 
-### Provider configuration
-
-#### Factory options (recommended)
-
-Each factory accepts flat, typed options validated by Zod at creation time:
-
-| Factory | Option | Type | Required | Description |
-|---------|--------|------|----------|-------------|
-| `openAI` | `apiKey` | `string` | yes | OpenAI API key |
-| | `models` | `string[]` | yes | Model identifiers (e.g. `['gpt-4o']`) |
-| | `defaults` | `RuntimeParams` | no | Default generation parameters |
-| `anthropic` | `apiKey` | `string` | yes | Anthropic API key |
-| | `models` | `string[]` | yes | Model identifiers (e.g. `['claude-sonnet-4-20250514']`) |
-| | `defaults` | `RuntimeParams` | no | Default generation parameters |
-| `gemini` | `apiKey` | `string` | yes | Google AI API key |
-| | `models` | `string[]` | yes | Model identifiers (e.g. `['gemini-2.0-flash']`) |
-| | `defaults` | `RuntimeParams` | no | Default generation parameters |
-
-Invalid options (empty `apiKey`, empty `models` array) throw a `BridgeError` with category `CONFIG` at creation time. The Zod schema is accessible via `factory.schema` for introspection and JSON Schema generation.
-
-#### Low-level API (class-based)
-
-> **Deprecated.** Use the factory functions above instead.
-
-Each provider class is constructed with a `ProviderConfig`:
-
-```typescript
-interface ProviderConfig {
-  /** Credential key-value pairs sourced from environment variables. */
-  credentials: Record<string, string>;
-  /** Model identifiers available for this provider. */
-  models: string[];
-  /** Default RuntimeParams applied when no override is specified. */
-  defaults?: RuntimeParams;
-}
-```
-
-Example:
-
-```typescript
-import { OpenAIProvider, AnthropicProvider } from '@stdiobus/mcp-agentic';
-
-// @deprecated — use openAI() and anthropic() factories instead
-const openai = new OpenAIProvider({
-  credentials: { apiKey: process.env.OPENAI_API_KEY! },
-  models: ['gpt-4o', 'gpt-4o-mini'],
-  defaults: { temperature: 0.7, maxTokens: 4096 },
-});
-
-const anthropic = new AnthropicProvider({
-  credentials: { apiKey: process.env.ANTHROPIC_API_KEY! },
-  models: ['claude-sonnet-4-20250514'],
-  defaults: { temperature: 0.5 },
-});
-```
-
-### RuntimeParams
-
-`RuntimeParams` controls AI generation behavior and can be specified at three levels with ascending priority:
-
-```
-ProviderConfig.defaults  <  session metadata.runtimeParams  <  prompt-level runtimeParams
-```
-
-Only defined fields override lower-priority values. `undefined` fields are ignored during merge. `providerSpecific` is shallow-merged across all layers.
-
-```typescript
-interface RuntimeParams {
-  model?: string;              // Model identifier
-  temperature?: number;        // Sampling temperature (0–2)
-  maxTokens?: number;          // Maximum tokens to generate
-  topP?: number;               // Nucleus sampling (0–1)
-  topK?: number;               // Top-K sampling
-  stopSequences?: string[];    // Stop sequences
-  systemPrompt?: string;       // System prompt override
-  providerSpecific?: Record<string, unknown>;  // Provider-native parameters
-}
-```
+---
 
 ## Public API
 
-Exported from `@stdiobus/mcp-agentic`:
+```typescript
+// Server
+McpAgenticServer, McpAgenticServerConfig
 
-**Core types:**
+// Agent contract
+AgentHandler, Agent, AgentResult, AgentEvent, AgentChunk, AgentFinal, AgentError
+PromptOpts, StreamOpts, WorkerConfig
 
-- `McpAgenticServer` — main server class
-- `McpAgenticServerConfig` — server configuration type
-- `AgentHandler` / `Agent` — agent interface
-- `AgentResult`, `AgentEvent`, `AgentChunk`, `AgentFinal`, `AgentError` — result types
-- `PromptOpts`, `StreamOpts` — option types
-- `WorkerConfig` — worker configuration type
+// Factory API (recommended)
+openAI, OpenAIOptions
+anthropic, AnthropicOptions
+gemini, GeminiOptions
+openAIResponses, OpenAIResponsesOptions
+createMultiProviderAgent, CreateMultiProviderAgentConfig
+defineProvider, DefinedProvider, DefineProviderConfig
+ProviderKind, ProviderCapabilities
 
-**Provider Factory API:**
+// Provider layer
+AIProvider, AIProviderResult, RuntimeParams, ProviderConfig, ChatMessage
+ContentPart, TextPart, ImageUrlPart, FilePart
+FilesAPI, FileCreateParams, UploadedFile
+ProviderRegistry, ProviderInfo, mergeRuntimeParams
+mapParameters, ModelProfile, MappableParam
 
-- `defineProvider` — factory contract function for creating providers with Zod validation and metadata
-- `DefinedProvider`, `DefineProviderConfig` — types for `defineProvider`
-- `ProviderKind` — provider type literal (`'llm'` | `'embedding'` | `'reranker'`)
-- `ProviderCapabilities` — provider capabilities type (`streaming`, `tools`, `vision`, `jsonMode`)
-- `openAI`, `OpenAIOptions` — OpenAI factory + options type
-- `anthropic`, `AnthropicOptions` — Anthropic factory + options type
-- `gemini`, `GeminiOptions` — Gemini factory + options type
-- `createMultiProviderAgent`, `CreateMultiProviderAgentConfig` — multi-provider agent helper + config type
+// Multi-provider agent
+MultiProviderAgent, MultiProviderAgentConfig
 
-**Provider Layer:**
+// Legacy class-based (deprecated — use factories above)
+OpenAIProvider, AnthropicProvider, GoogleGeminiProvider
+MultiProviderCompanionAgent, MultiProviderCompanionConfig
+```
 
-- `AIProvider` — unified provider interface (extended with optional `kind` and `capabilities`)
-- `AIProviderResult` — normalized provider response type
-- `RuntimeParams` — generation parameter type
-- `ProviderConfig` — provider configuration type
-- `ChatMessage` — standard message format type
-- `ProviderRegistry` — provider registry class
-- `ProviderInfo` — provider info type (id, models, kind, capabilities, displayName, description)
-- `mergeRuntimeParams` — three-level parameter merge utility
-- `OpenAIProvider` — OpenAI provider via native SDK *(deprecated — use `openAI()` factory)*
-- `AnthropicProvider` — Anthropic provider via native SDK *(deprecated — use `anthropic()` factory)*
-- `GoogleGeminiProvider` — Google Gemini provider via native SDK *(deprecated — use `gemini()` factory)*
-
-**Multi-Provider Agent:**
-
-- `MultiProviderCompanionAgent` — agent supporting multiple AI providers
-- `MultiProviderCompanionConfig` — multi-provider agent configuration type
+---
 
 ## Development
 
 ```bash
 npm install
-npm run build        # esbuild + tsc declarations
-npm run typecheck    # type checking only
-npm run test:unit    # unit tests (Jest)
-npm run test:e2e     # end-to-end tests
-npm run test:all     # unit + e2e
-npm run test:e2e:providers  # live provider e2e tests (requires API keys)
+npm run build          # esbuild bundle + tsc declarations
+npm run typecheck      # tsc strict, no output
+npm run test:unit      # Jest unit tests
+npm run test:e2e       # end-to-end tests
+npm run test:all       # unit + e2e
+npm run test:coverage  # coverage report
+npm run test:e2e:providers  # live provider tests (requires API keys)
 ```
 
-### Peer dependencies for provider development
+Live provider tests skip automatically when the corresponding key is absent:
 
-The provider SDKs are peer/optional dependencies. Install only the ones you need:
-
-```bash
-npm install openai                  # OpenAI provider
-npm install @anthropic-ai/sdk       # Anthropic provider
-npm install @google/generative-ai   # Google Gemini provider
-```
-
-### Live provider e2e tests
-
-The `test:e2e:providers` script runs end-to-end tests against real AI provider APIs. Tests are skipped automatically when the corresponding API key is not set:
-
-| Environment Variable | Provider |
-|---------------------|----------|
-| `OPENAI_API_KEY` | OpenAI |
-| `ANTHROPIC_API_KEY` | Anthropic |
+| Variable | Provider |
+|----------|----------|
+| `OPENAI_API_KEY` | OpenAI Chat + Responses |
+| `ANTHROPIC_API_KEY` | Anthropic Claude |
 | `GOOGLE_AI_API_KEY` | Google Gemini |
 
-## Steering Guides
+---
+
+## Error handling
+
+All domain errors are `BridgeError` with typed categories:
+
+| Category | Meaning | Retryable |
+|----------|---------|-----------|
+| `CONFIG` | Missing/invalid configuration or credentials | No |
+| `AUTH` | API key rejected by the provider | No |
+| `TRANSPORT` | StdioBus or network transport failure | Yes |
+| `UPSTREAM` | Provider returned an error (e.g., rate limit) | Yes |
+| `TIMEOUT` | Request exceeded timeout | Yes |
+| `PROTOCOL` | MCP protocol violation | No |
+| `INTERNAL` | Unexpected internal error | No |
+
+---
+
+## Steering guides
 
 - [Activation and Scope](steering/activation-and-scope.md)
 - [Discovery and Routing](steering/discovery-and-routing.md)
@@ -706,11 +680,7 @@ The `test:e2e:providers` script runs end-to-end tests against real AI provider A
 - [Failure Handling](steering/failure-handling.md)
 - [Configuration](steering/configuration.md)
 
-## What's Next
-
-MCP Agentic is built to grow. The architecture has no hard limits on the number of tools, agents, or execution backends. Current v1.0 ships with 8 MCP tools and two backends (in-process + worker). Next up: agent registry management, session persistence, operator-level permission controls, and more.
-
-Follow the repo for updates. The project uses semantic versioning.
+---
 
 ## License
 
